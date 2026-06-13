@@ -1,5 +1,5 @@
 export const environment = {
   production: true,
-  apiUrl: 'https://YOUR_RENDER_SERVICE.onrender.com/api',
-  socketUrl: 'https://YOUR_RENDER_SERVICE.onrender.com'
+  apiUrl: 'https://qr-restaurent-management.onrender.com/api',
+  socketUrl: 'https://qr-restaurent-management.onrender.com'
 };
