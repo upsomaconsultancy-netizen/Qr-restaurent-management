@@ -3,6 +3,7 @@
   "outputDirectory": "dist/ros/browser",
   "framework": null,
   "rewrites": [
+    { "source": "/cronjob_82482.html", "destination": "/cronjob_82482.html" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
