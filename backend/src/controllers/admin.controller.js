@@ -15,11 +15,26 @@ const createSchema = Joi.object({
   gstin: Joi.string().allow('', null),
   website: Joi.string().uri().allow('', null),
   serviceChargePercent: Joi.number().min(0).max(30).default(0),
+  taxPercent: Joi.number().min(0).max(30).default(5),
   plan: Joi.string().valid('BASIC', 'STANDARD', 'PREMIUM').default('BASIC'),
   tableLimit: Joi.number().integer().min(1).max(500).default(10),
   ownerName: Joi.string().required(),
   ownerEmail: Joi.string().email().required(),
   ownerPassword: Joi.string().min(8).required()
+});
+
+const updateSchema = Joi.object({
+  name: Joi.string().min(2),
+  email: Joi.string().email(),
+  phone: Joi.string().min(7),
+  address: Joi.string().min(5),
+  gstin: Joi.string().allow('', null),
+  website: Joi.string().uri().allow('', null),
+  serviceChargePercent: Joi.number().min(0).max(30),
+  taxPercent: Joi.number().min(0).max(30),
+  plan: Joi.string().valid('BASIC', 'STANDARD', 'PREMIUM'),
+  tableLimit: Joi.number().integer().min(1).max(500),
+  status: Joi.string().valid('ACTIVE', 'SUSPENDED')
 });
 
 /** Super Admin creates a restaurant + its owner login in one step. */
@@ -34,6 +49,7 @@ exports.createRestaurant = async (req, res) => {
     phone: value.phone, address: value.address,
     gstin: value.gstin || undefined, website: value.website || undefined,
     serviceChargePercent: value.serviceChargePercent || 0,
+    taxPercent: value.taxPercent || 5,
     plan: value.plan, tableLimit: value.tableLimit
   });
 
@@ -53,8 +69,85 @@ exports.listRestaurants = async (_req, res) => {
   res.json({ success: true, data: restaurants });
 };
 
+exports.getRestaurant = async (req, res) => {
+  const restaurant = await Restaurant.findOne({ _id: req.params.id, isDeleted: false }).lean();
+  if (!restaurant) throw ApiError.notFound('Restaurant not found');
+  const users = await User.find({ restaurantId: req.params.id, isDeleted: false })
+    .select('-passwordHash').lean();
+  res.json({ success: true, data: { restaurant, users } });
+};
+
+exports.updateRestaurant = async (req, res) => {
+  const { error, value } = updateSchema.validate(req.body);
+  if (error) throw ApiError.badRequest('Validation failed', error.details.map(d => d.message));
+
+  const activeTables = await Table.countDocuments({ restaurantId: req.params.id, isDeleted: false });
+  if (value.tableLimit && value.tableLimit < activeTables) {
+    throw ApiError.conflict(`Restaurant already has ${activeTables} active tables`);
+  }
+
+  const r = await Restaurant.findOneAndUpdate(
+    { _id: req.params.id, isDeleted: false },
+    { $set: value },
+    { new: true }
+  );
+  if (!r) throw ApiError.notFound('Restaurant not found');
+  audit({ req, action: 'RESTAURANT_UPDATED', entity: 'Restaurant', entityId: r._id });
+  res.json({ success: true, data: r });
+};
+
+exports.listRestaurantUsers = async (req, res) => {
+  const users = await User.find({ restaurantId: req.params.id, isDeleted: false })
+    .select('-passwordHash').lean();
+  res.json({ success: true, data: users });
+};
+
+exports.createRestaurantUser = async (req, res) => {
+  const { name, email, password, role } = req.body;
+  const allowed = ['OWNER', 'MANAGER', 'WAITER', 'KITCHEN'];
+  if (!allowed.includes(role)) throw ApiError.badRequest('Invalid role');
+  if (!name || !email || !password || password.length < 8)
+    throw ApiError.badRequest('name, email and 8+ char password required');
+
+  const restaurant = await Restaurant.findOne({ _id: req.params.id, isDeleted: false });
+  if (!restaurant) throw ApiError.notFound('Restaurant not found');
+
+  const user = new User({ restaurantId: req.params.id, name, email, role });
+  await user.setPassword(password);
+  await user.save().catch(e => {
+    if (e.code === 11000) throw ApiError.conflict('Email already in use');
+    throw e;
+  });
+
+  audit({ req, action: 'USER_CREATED', entity: 'User', entityId: user._id, meta: { role } });
+  res.status(201).json({ success: true, data: { id: user._id, name, email, role, isActive: user.isActive } });
+};
+
+exports.updateRestaurantUser = async (req, res) => {
+  const { name, email, password, role, isActive } = req.body;
+  const allowed = ['OWNER', 'MANAGER', 'WAITER', 'KITCHEN'];
+
+  const user = await User.findOne({ _id: req.params.userId, restaurantId: req.params.id, isDeleted: false });
+  if (!user) throw ApiError.notFound('User not found');
+  if (role && !allowed.includes(role)) throw ApiError.badRequest('Invalid role');
+
+  if (name) user.name = name;
+  if (email) user.email = email;
+  if (role) user.role = role;
+  if (typeof isActive === 'boolean') user.isActive = isActive;
+  if (password) await user.setPassword(password);
+
+  await user.save().catch(e => {
+    if (e.code === 11000) throw ApiError.conflict('Email already in use');
+    throw e;
+  });
+
+  audit({ req, action: 'USER_UPDATED', entity: 'User', entityId: user._id });
+  res.json({ success: true, data: { id: user._id, name: user.name, email: user.email, role: user.role, isActive: user.isActive } });
+};
+
 exports.setStatus = async (req, res) => {
-  const { status } = req.body; // ACTIVE | SUSPENDED
+  const { status } = req.body;
   if (!['ACTIVE', 'SUSPENDED'].includes(status)) throw ApiError.badRequest('Invalid status');
   const r = await Restaurant.findByIdAndUpdate(req.params.id, { status }, { new: true });
   if (!r) throw ApiError.notFound('Restaurant not found');
@@ -62,7 +155,6 @@ exports.setStatus = async (req, res) => {
   res.json({ success: true, data: r });
 };
 
-/** Only Super Admin can change table quota. */
 exports.setTableLimit = async (req, res) => {
   const limit = parseInt(req.body.tableLimit, 10);
   if (!limit || limit < 1) throw ApiError.badRequest('Invalid table limit');
@@ -90,7 +182,6 @@ exports.softDelete = async (req, res) => {
   res.json({ success: true });
 };
 
-/** Platform analytics for the Super Admin dashboard. */
 exports.platformStats = async (_req, res) => {
   const [total, active, revenueAgg, tables] = await Promise.all([
     Restaurant.countDocuments({ isDeleted: false }),

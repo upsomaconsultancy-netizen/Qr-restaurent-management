@@ -2,6 +2,7 @@ import { Component, OnInit, inject, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/services/api.service';
+import { AuthService } from '../../core/services/auth.service';
 
 @Component({
   standalone: true,
@@ -90,6 +91,9 @@ import { ApiService } from '../../core/services/api.service';
               <div class="col-md-6">
                 <label class="form-label">Role *</label>
                 <select class="form-select" [(ngModel)]="role" name="role" required>
+                  @if (auth.user()?.role === 'OWNER') {
+                    <option value="MANAGER">MANAGER</option>
+                  }
                   <option value="WAITER">WAITER</option>
                   <option value="KITCHEN">KITCHEN</option>
                 </select>
@@ -119,6 +123,7 @@ import { ApiService } from '../../core/services/api.service';
 })
 export class StaffManagementComponent implements OnInit {
   private api = inject(ApiService);
+  auth = inject(AuthService);
 
   staffList = signal<any[]>([]);
   search = signal('');

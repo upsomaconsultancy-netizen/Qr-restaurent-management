@@ -2,10 +2,16 @@ const User = require('../models/User');
 const ApiError = require('../utils/ApiError');
 const { audit } = require('../utils/audit');
 
-const MANAGEABLE = ['WAITER', 'KITCHEN'];
+const MANAGEABLE_BY_MANAGER = ['WAITER', 'KITCHEN'];
+const MANAGEABLE_BY_OWNER   = ['MANAGER', 'WAITER', 'KITCHEN'];
+
+function allowedRoles(req) {
+  return req.user.role === 'OWNER' ? MANAGEABLE_BY_OWNER : MANAGEABLE_BY_MANAGER;
+}
 
 exports.list = async (req, res) => {
-  const staff = await User.find({ restaurantId: req.user.restaurantId, role: { $in: MANAGEABLE }, isDeleted: false })
+  const roles = req.user.role === 'OWNER' ? MANAGEABLE_BY_OWNER : MANAGEABLE_BY_MANAGER;
+  const staff = await User.find({ restaurantId: req.user.restaurantId, role: { $in: roles }, isDeleted: false })
     .select('-passwordHash')
     .lean();
   res.json({ success: true, data: staff });
@@ -13,7 +19,8 @@ exports.list = async (req, res) => {
 
 exports.create = async (req, res) => {
   const { name, email, password, role } = req.body;
-  if (!MANAGEABLE.includes(role)) throw ApiError.badRequest('Role must be WAITER or KITCHEN');
+  const allowed = allowedRoles(req);
+  if (!allowed.includes(role)) throw ApiError.badRequest(`Role must be one of: ${allowed.join(', ')}`);
   if (!name || !email || !password || password.length < 8) throw ApiError.badRequest('name, email and 8+ char password required');
 
   const user = new User({ restaurantId: req.user.restaurantId, name, email, role });
@@ -31,7 +38,8 @@ exports.update = async (req, res) => {
   const user = await User.findOne({ _id: req.params.id, restaurantId: req.user.restaurantId, isDeleted: false });
   if (!user) throw ApiError.notFound('Staff member not found');
   if (user.role === 'OWNER') throw ApiError.forbidden('Cannot update the owner');
-  if (role && !MANAGEABLE.includes(role)) throw ApiError.badRequest('Role must be WAITER or KITCHEN');
+  const allowed = allowedRoles(req);
+  if (role && !allowed.includes(role)) throw ApiError.badRequest(`Role must be one of: ${allowed.join(', ')}`);
 
   if (name) user.name = name;
   if (email) user.email = email;
