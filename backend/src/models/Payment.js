@@ -1,0 +1,19 @@
+const mongoose = require('mongoose');
+
+const paymentSchema = new mongoose.Schema(
+  {
+    restaurantId: { type: mongoose.Types.ObjectId, ref: 'Restaurant', required: true, index: true },
+    sessionId: { type: mongoose.Types.ObjectId, ref: 'TableSession', index: true },
+    orderIds: [{ type: mongoose.Types.ObjectId, ref: 'Order' }],
+    amount: { type: Number, required: true },
+    method: { type: String, enum: ['CASH', 'UPI', 'CARD'], required: true },
+    collectedBy: { type: mongoose.Types.ObjectId, ref: 'User' }, // waiter/cashier who marked paid
+    collectedByName: String,
+    collectedByEmail: String,
+    collectedAt: { type: Date, default: Date.now },
+    reference: String // UPI txn id / card ref
+  },
+  { timestamps: true }
+);
+
+module.exports = mongoose.model('Payment', paymentSchema);

@@ -1,0 +1,56 @@
+:root {
+  --ros-bg: #0e0f13;
+  --ros-surface: #ffffff;
+  --ros-ink: #16181d;
+  --ros-accent: #e8542f;       /* tandoor ember */
+  --ros-accent-soft: #fdeae3;
+  --ros-green: #1d7a4f;
+  --ros-radius: 14px;
+  --ros-shadow: 0 6px 24px rgba(20, 22, 30, .08);
+}
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  color: var(--ros-ink);
+  background: #f6f5f2;
+}
+
+h1, h2, h3, .display-font { font-family: 'Sora', sans-serif; }
+
+.ros-card {
+  background: var(--ros-surface);
+  border-radius: var(--ros-radius);
+  box-shadow: var(--ros-shadow);
+  border: none;
+}
+
+.btn-accent {
+  background: var(--ros-accent);
+  color: #fff;
+  border-radius: 999px;
+  font-weight: 600;
+  border: none;
+  &:hover { background: #c84324; color: #fff; }
+}
+
+.badge-status {
+  border-radius: 6px; font-size: .72rem; letter-spacing: .04em; text-transform: uppercase;
+  &.PENDING { background: #fff3cd; color: #7a5c00; }
+  &.ACCEPTED { background: #e3edff; color: #1b4ea8; }
+  &.PREPARING { background: #ffe9d6; color: #9a4b00; }
+  &.READY { background: #d9f5e6; color: #136a43; }
+  &.SERVED { background: #ececec; color: #555; }
+  &.COMPLETED { background: #d9f5e6; color: #136a43; }
+  &.CANCELLED { background: #fde2e2; color: #a31515; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #ececec 25%, #f7f7f7 50%, #ececec 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  border-radius: 8px;
+}
+@keyframes shimmer { to { background-position: -200% 0; } }
+
+[data-bs-theme="dark"] body { background: var(--ros-bg); color: #e8e8e8; }
+[data-bs-theme="dark"] .ros-card { background: #1a1c22; color: #e8e8e8; }

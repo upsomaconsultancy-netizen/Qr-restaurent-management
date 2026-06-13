@@ -1,0 +1,772 @@
+import {
+  Component, Input, OnChanges, OnInit, SimpleChanges,
+  computed, inject, signal
+} from '@angular/core';
+import { CommonModule, DecimalPipe } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import { ApiService } from '../../core/services/api.service';
+import { SocketService } from '../../core/services/socket.service';
+
+interface MenuItem {
+  _id: string; name: string; description?: string; price: number;
+  imageUrl?: string; foodType: string; spicyLevel: number; categoryId: string;
+  variants: { _id: string; name: string; price: number }[];
+  taxes?: { name: string; rate: number }[];
+}
+interface CartLine { item: MenuItem; qty: number; }
+
+const CUSTOMER_TOKEN_PREFIX = 'ros_cust_token_';
+
+@Component({
+  standalone: true,
+  imports: [CommonModule, DecimalPipe, FormsModule],
+  template: `
+    <!-- ── Loading ── -->
+    @if (loading()) {
+      <div class="cm-page">
+        <div class="cm-header"><div class="cm-header-inner"><div class="sk sk-title"></div></div></div>
+        <div class="cm-body">
+          @for (i of [1,2,3,4,5]; track i) {
+            <div class="sk-card">
+              <div class="sk sk-img"></div>
+              <div class="sk-lines"><div class="sk sk-line-lg"></div><div class="sk sk-line-md"></div></div>
+            </div>
+          }
+        </div>
+      </div>
+    } @else if (!data()) {
+      <div class="cm-page cm-error-page">
+        <div class="cm-error-box">
+          <div class="cm-error-icon">⚠️</div>
+          <h2 class="cm-error-title">QR Code Invalid</h2>
+          <p class="cm-error-desc">This QR code is invalid or expired. Please ask staff for assistance.</p>
+        </div>
+      </div>
+    } @else if (!orderType()) {
+      <div class="cm-page">
+        <header class="cm-header">
+          <div class="cm-header-inner">
+            <div class="cm-resto-info">
+              @if (data()!.restaurant.logoUrl) {
+                <img class="cm-logo" [src]="data()!.restaurant.logoUrl" [alt]="data()!.restaurant.name">
+              } @else {
+                <div class="cm-resto-avatar">{{ data()!.restaurant.name.charAt(0) }}</div>
+              }
+              <div>
+                <div class="cm-resto-name">{{ data()!.restaurant.name }}</div>
+                <div class="cm-table-badge">Table {{ data()!.table.number }}</div>
+              </div>
+            </div>
+          </div>
+        </header>
+        <div class="cm-body cm-choose-body">
+          <div class="cm-choose-card">
+            <div class="cm-choose-icon">🍽️</div>
+            <h2 class="cm-choose-title">How would you like to order?</h2>
+            <p class="cm-choose-sub">Choose your dining preference</p>
+            <div class="cm-choose-options">
+              <button class="cm-opt-btn cm-opt-primary" (click)="orderType.set('DINING')">
+                <span class="cm-opt-emoji">🍽️</span>
+                <div><div class="cm-opt-label">Dine In</div><div class="cm-opt-desc">Eat at the table</div></div>
+              </button>
+              <button class="cm-opt-btn cm-opt-secondary" (click)="orderType.set('TAKEAWAY')">
+                <span class="cm-opt-emoji">📦</span>
+                <div><div class="cm-opt-label">Takeaway</div><div class="cm-opt-desc">Carry your food</div></div>
+              </button>
+            </div>
+            <div class="cm-delivery-soon">⏱ Home delivery — coming soon</div>
+          </div>
+        </div>
+      </div>
+    } @else {
+      <div class="cm-page">
+        <header class="cm-header">
+          <div class="cm-header-inner">
+            <div class="cm-resto-info">
+              @if (data()!.restaurant.logoUrl) {
+                <img class="cm-logo" [src]="data()!.restaurant.logoUrl" [alt]="data()!.restaurant.name">
+              } @else {
+                <div class="cm-resto-avatar">{{ data()!.restaurant.name.charAt(0) }}</div>
+              }
+              <div>
+                <div class="cm-resto-name">{{ data()!.restaurant.name }}</div>
+                <div class="cm-table-badge">Table {{ data()!.table.number }}@if (custName) { · {{ custName }}}</div>
+              </div>
+            </div>
+            <div class="cm-order-type-chip">{{ orderType() === 'DINING' ? '🍽️ Dine In' : '📦 Takeaway' }}</div>
+          </div>
+        </header>
+
+        <!-- Category Pills -->
+        <div class="cm-cats-wrap">
+          <div class="cm-cats">
+            <button class="cm-cat-pill" [class.active]="activeCat() === ''" (click)="activeCat.set('')">All</button>
+            @for (c of data()!.categories; track c._id) {
+              <button class="cm-cat-pill" [class.active]="activeCat() === c._id" (click)="activeCat.set(c._id)">{{ c.name }}</button>
+            }
+          </div>
+        </div>
+
+        <div class="cm-body">
+          <div class="cm-items-count">{{ visibleItems().length }} item{{ visibleItems().length !== 1 ? 's' : '' }}</div>
+
+          @for (item of visibleItems(); track item._id) {
+            <div class="cm-item-card">
+              <div class="cm-item-body">
+                <div class="cm-item-veg-dot">
+                  @if (item.foodType === 'NON_VEG') {
+                    <svg width="10" height="10" viewBox="0 0 10 10"><rect width="10" height="10" rx="2" fill="#c0392b"/><polygon points="5,2 9,8 1,8" fill="white"/></svg>
+                  } @else {
+                    <svg width="10" height="10" viewBox="0 0 10 10"><rect width="10" height="10" rx="2" fill="#27ae60"/><circle cx="5" cy="5" r="3" fill="white"/></svg>
+                  }
+                </div>
+                <div class="cm-item-text">
+                  <div class="cm-item-name">{{ item.name }}</div>
+                  @if (item.description) { <div class="cm-item-desc">{{ item.description }}</div> }
+                  <div class="cm-item-meta">
+                    @if (item.spicyLevel) { <span class="cm-spicy">{{ '🌶️'.repeat(Math.min(item.spicyLevel,3)) }}</span> }
+                    @if (item.taxes?.length) { <span class="cm-tax-note">+ taxes</span> }
+                  </div>
+                  <div class="cm-item-price">₹{{ item.price }}</div>
+                </div>
+                <div class="cm-item-actions">
+                  @if (item.imageUrl) {
+                    <img class="cm-item-img" [src]="item.imageUrl" [alt]="item.name" loading="lazy">
+                  } @else {
+                    <div class="cm-item-img-ph">🍴</div>
+                  }
+                  @if (getQty(item) === 0) {
+                    <button class="cm-add-btn" (click)="add(item)">ADD</button>
+                  } @else {
+                    <div class="cm-qty-ctrl">
+                      <button class="cm-qty-btn" (click)="remove(item)">−</button>
+                      <span class="cm-qty-num">{{ getQty(item) }}</span>
+                      <button class="cm-qty-btn" (click)="add(item)">+</button>
+                    </div>
+                  }
+                </div>
+              </div>
+            </div>
+          }
+
+          @if (visibleItems().length === 0) {
+            <div class="cm-empty-cat"><p>No items in this category</p></div>
+          }
+
+          <!-- Bill Section -->
+          @if (bill(); as b) {
+            @if (b.orders?.length) {
+              <div class="cm-bill-card">
+                <div class="cm-bill-head">
+                  🧾 Your Orders
+                  @if (b.paid) { <span class="cm-paid-chip">✓ Paid</span> }
+                </div>
+                @for (o of b.orders; track o._id) {
+                  <div class="cm-bill-order">
+                    <div class="cm-bill-order-head">
+                      <span>Order #{{ o.orderNumber }}</span>
+                      <span class="cm-status-dot" [attr.data-s]="o.status.toLowerCase()">{{ o.status }}</span>
+                    </div>
+                    @for (li of o.items; track li._id) {
+                      <div class="cm-bill-line">
+                        <span class="cm-bill-item">
+                          {{ li.qty }} × {{ li.name }}
+                          @if (li.locked) { <span class="cm-served-tag">🔒 Served</span> }
+                        </span>
+                        <span class="cm-bill-amt">₹{{ li.lineTotal }}</span>
+                      </div>
+                    }
+                  </div>
+                }
+                <div class="cm-bill-totals">
+                  <div class="cm-bill-row"><span>Subtotal</span><span>₹{{ b.subtotal }}</span></div>
+                  @if (hasTaxes(b)) {
+                    @for (t of b.taxes; track t.name) {
+                      @if ((t.amount || 0) > 0) {
+                        <div class="cm-bill-row cm-bill-tax"><span>{{ t.name }}</span><span>₹{{ t.amount }}</span></div>
+                      }
+                    }
+                  }
+                  <div class="cm-bill-row cm-bill-grand"><span>Total</span><span>₹{{ b.total }}</span></div>
+                  @if (b.dueAmount > 0 && !b.paid) {
+                    <div class="cm-bill-row cm-bill-due"><span>Due</span><span>₹{{ b.dueAmount }}</span></div>
+                  }
+                </div>
+
+                @if (b.paid) {
+                  <div class="cm-paid-banner">🎉 Bill cleared — Thank you for dining with us!</div>
+                }
+
+                <!-- Payment Coming Soon -->
+                @if (b.canPay && !b.paid) {
+                  <div class="cm-payment-section">
+                    <button class="cm-pay-btn" (click)="showPaymentComingSoon = true">
+                      💳 Proceed to Payment
+                    </button>
+                  </div>
+                }
+
+                <!-- Receipt Button — only after payment is done -->
+                @if (b.paid && b.canGenerateReceipt) {
+                  <button class="cm-receipt-btn" (click)="viewReceipt()">
+                    🖨️ View / Print Receipt
+                  </button>
+                } @else if (b.orders?.length && !b.paid) {
+                  <div class="cm-receipt-disabled">Receipt available after payment is completed</div>
+                }
+              </div>
+            }
+          }
+
+          <!-- Previous Visits -->
+          @if (pastOrders().length) {
+            <div class="cm-history-card">
+              <div class="cm-history-head">🕐 Your Previous Visits</div>
+              @for (visit of pastOrders(); track $index) {
+                <div class="cm-history-row">
+                  <div class="cm-history-date">{{ visit.date | date:'dd MMM yyyy' }}</div>
+                  <div class="cm-history-items">{{ visit.items.join(', ') }}</div>
+                  <div class="cm-history-total">₹{{ visit.total }}</div>
+                </div>
+              }
+            </div>
+          }
+
+          <div style="height:100px"></div>
+        </div>
+
+        <!-- Cart Footer -->
+        @if (cart().length) {
+          <div class="cm-cart-footer">
+            <button class="cm-cart-btn" (click)="requestPlaceOrder()" [disabled]="placing()">
+              @if (placing()) {
+                <span>Placing order…</span>
+              } @else {
+                <div class="cm-cart-left">
+                  <span class="cm-cart-badge">{{ cartCount() }}</span>
+                  <span>Place Order</span>
+                </div>
+                <span class="cm-cart-total">₹{{ cartTotal() | number:'1.0-0' }}</span>
+              }
+            </button>
+          </div>
+        }
+      </div>
+    }
+
+    <!-- ── Identity Popup Modal ── -->
+    @if (showIdentityModal()) {
+      <div class="cm-modal-overlay" (click)="showIdentityModal.set(false)">
+        <div class="cm-modal cm-identity-modal" (click)="$event.stopPropagation()">
+          <div class="cm-modal-icon">👤</div>
+          <h3 class="cm-modal-title">Almost there!</h3>
+          <p class="cm-modal-body">Enter your details so we can track your order.</p>
+          <div class="cm-form-group">
+            <label class="cm-label">Your Name *</label>
+            <input class="cm-input" type="text" [(ngModel)]="custName"
+              placeholder="e.g. Rahul Sharma" maxlength="50"
+              [class.cm-input-error]="identityError() && !custName.trim()">
+          </div>
+          <div class="cm-form-group">
+            <label class="cm-label">Mobile Number *</label>
+            <input class="cm-input" type="tel" [(ngModel)]="custMobile"
+              placeholder="10-digit mobile number" maxlength="10"
+              [class.cm-input-error]="identityError() && !isMobileValid()">
+          </div>
+          @if (identityError()) {
+            <div class="cm-input-msg cm-input-msg-err">{{ identityError() }}</div>
+          }
+          <button class="cm-submit-btn" (click)="submitIdentity()" [disabled]="submittingIdentity()">
+            @if (submittingIdentity()) { Placing order… } @else { Confirm & Place Order }
+          </button>
+          <button class="cm-modal-cancel" (click)="showIdentityModal.set(false)">Cancel</button>
+        </div>
+      </div>
+    }
+
+    <!-- ── Payment Coming Soon Modal ── -->
+    @if (showPaymentComingSoon) {
+      <div class="cm-modal-overlay" (click)="showPaymentComingSoon = false">
+        <div class="cm-modal" (click)="$event.stopPropagation()">
+          <div class="cm-modal-icon">💳</div>
+          <h3 class="cm-modal-title">Payment Gateway</h3>
+          <p class="cm-modal-body">Online payment is coming soon!<br>Please pay at the counter or ask your waiter.</p>
+          <button class="cm-modal-close" (click)="showPaymentComingSoon = false">Got it</button>
+        </div>
+      </div>
+    }
+
+    <!-- ── Receipt Modal ── -->
+    @if (receipt()) {
+      <div class="cm-modal-overlay" (click)="closeReceipt()">
+        <div class="cm-receipt-modal" (click)="$event.stopPropagation()">
+          <div class="cm-receipt-content" id="receipt-print-area">
+            <div class="rcpt">
+              <!-- Restaurant Header -->
+              @if (receipt()!.restaurant.logoUrl) {
+                <img class="rcpt-logo" [src]="receipt()!.restaurant.logoUrl" [alt]="receipt()!.restaurant.name">
+              }
+              <div class="rcpt-name">{{ receipt()!.restaurant.name }}</div>
+              <div class="rcpt-addr">{{ receipt()!.restaurant.address }}</div>
+              <div class="rcpt-addr">📞 {{ receipt()!.restaurant.phone }}</div>
+              @if (receipt()!.restaurant.gstin) {
+                <div class="rcpt-addr">GSTIN: {{ receipt()!.restaurant.gstin }}</div>
+              }
+              @if (receipt()!.restaurant.email) {
+                <div class="rcpt-addr">{{ receipt()!.restaurant.email }}</div>
+              }
+              @if (receipt()!.restaurant.website) {
+                <div class="rcpt-addr">{{ receipt()!.restaurant.website }}</div>
+              }
+
+              <div class="rcpt-divider">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</div>
+              <div class="rcpt-invoice-title">TAX INVOICE / CUSTOMER RECEIPT</div>
+              <div class="rcpt-divider">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</div>
+
+              <!-- Order Details -->
+              <div class="rcpt-details">
+                <div class="rcpt-detail-row"><span>Order ID</span><span>{{ receipt()!.order.orderId }}</span></div>
+                <div class="rcpt-detail-row"><span>Table</span><span>{{ receipt()!.order.tableName || receipt()!.order.tableNumber }}</span></div>
+                <div class="rcpt-detail-row"><span>Customer</span><span>{{ receipt()!.order.customerName }}</span></div>
+                <div class="rcpt-detail-row"><span>Mobile</span><span>{{ receipt()!.order.customerMobile }}</span></div>
+                <div class="rcpt-detail-row"><span>Date</span><span>{{ receipt()!.order.orderDate | date:'dd MMM yyyy, hh:mm a' }}</span></div>
+                <div class="rcpt-detail-row"><span>Generated</span><span>{{ receipt()!.order.generatedAt | date:'dd MMM yyyy, hh:mm a' }}</span></div>
+              </div>
+
+              <div class="rcpt-divider">───────────────────────────────────</div>
+
+              <!-- Items Table -->
+              <table class="rcpt-table">
+                <thead>
+                  <tr><th>Item</th><th class="rcpt-num">Qty</th><th class="rcpt-num">Rate</th><th class="rcpt-num">Amt</th></tr>
+                </thead>
+                <tbody>
+                  @for (item of receipt()!.items; track $index) {
+                    <tr>
+                      <td>{{ item.name }}@if(item.variant){<span class="rcpt-variant"> ({{ item.variant }})</span>}</td>
+                      <td class="rcpt-num">{{ item.qty }}</td>
+                      <td class="rcpt-num">{{ item.unitPrice | number:'1.2-2' }}</td>
+                      <td class="rcpt-num">{{ item.lineTotal | number:'1.2-2' }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+
+              <div class="rcpt-divider">───────────────────────────────────</div>
+
+              <!-- Totals -->
+              <div class="rcpt-totals">
+                <div class="rcpt-total-row"><span>Subtotal</span><span>₹{{ receipt()!.summary.subtotal | number:'1.2-2' }}</span></div>
+                @for (t of receipt()!.summary.taxes; track t.name) {
+                  @if ((t.amount || 0) > 0) {
+                    <div class="rcpt-total-row rcpt-tax-row"><span>{{ t.name }}</span><span>₹{{ t.amount | number:'1.2-2' }}</span></div>
+                  }
+                }
+                @if (receipt()!.summary.serviceCharge) {
+                  <div class="rcpt-total-row rcpt-tax-row">
+                    <span>Service Charge ({{ receipt()!.summary.serviceChargePercent }}%)</span>
+                    <span>₹{{ receipt()!.summary.serviceCharge | number:'1.2-2' }}</span>
+                  </div>
+                }
+                <div class="rcpt-divider">───────────────────────────────────</div>
+                <div class="rcpt-total-row rcpt-grand-total"><span>GRAND TOTAL</span><span>₹{{ receipt()!.summary.grandTotal | number:'1.2-2' }}</span></div>
+              </div>
+
+              <div class="rcpt-divider">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</div>
+              <div class="rcpt-footer">Thank You For Visiting!</div>
+              <div class="rcpt-footer rcpt-footer-sub">Visit Again Soon 😊</div>
+              @if (receipt()!.restaurant.website) {
+                <div class="rcpt-footer rcpt-footer-web">{{ receipt()!.restaurant.website }}</div>
+              }
+            </div>
+          </div>
+          <div class="cm-receipt-actions">
+            <button class="cm-print-btn-modal" (click)="printReceipt()">🖨️ Print</button>
+            <button class="cm-close-btn" (click)="closeReceipt()">Close</button>
+          </div>
+        </div>
+      </div>
+    }
+  `,
+  styles: [`
+    :host {
+      --primary: #e8542f; --primary-light: #fdeae3; --primary-dark: #c94120;
+      --text: #111827; --text-muted: #6b7280; --border: #e5e7eb;
+      --surface: #ffffff; --bg: #f9fafb; --radius: 12px; --radius-sm: 8px;
+      font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    .cm-page { min-height:100dvh; background:var(--bg); max-width:600px; margin:0 auto; }
+    .cm-header { background:var(--surface); border-bottom:1px solid var(--border); position:sticky; top:0; z-index:50; box-shadow:0 1px 4px rgba(0,0,0,.06); }
+    .cm-header-inner { display:flex; align-items:center; justify-content:space-between; padding:.875rem 1rem; }
+    .cm-resto-info { display:flex; align-items:center; gap:.625rem; }
+    .cm-logo { width:38px; height:38px; border-radius:50%; object-fit:cover; }
+    .cm-resto-avatar { width:38px; height:38px; border-radius:50%; background:var(--primary); color:white; display:flex; align-items:center; justify-content:center; font-size:1rem; font-weight:700; flex-shrink:0; }
+    .cm-resto-name { font-size:.95rem; font-weight:700; color:var(--text); }
+    .cm-table-badge { font-size:.72rem; color:var(--text-muted); margin-top:.1rem; }
+    .cm-order-type-chip { font-size:.75rem; font-weight:600; background:var(--primary-light); color:var(--primary); padding:.3rem .75rem; border-radius:2rem; }
+
+    .cm-body { padding:0 0 1rem; }
+    .cm-choose-body { display:flex; align-items:center; justify-content:center; min-height:85dvh; }
+
+    /* Identity Form */
+    .cm-identity-card { background:var(--surface); border-radius:var(--radius); padding:2rem 1.5rem; margin:1rem; box-shadow:0 2px 12px rgba(0,0,0,.08); text-align:center; }
+    .cm-identity-icon { font-size:2.5rem; margin-bottom:1rem; }
+    .cm-form-group { text-align:left; margin-bottom:1rem; }
+    .cm-label { display:block; font-size:.8rem; font-weight:600; color:var(--text); margin-bottom:.35rem; }
+    .cm-input { width:100%; padding:.7rem .875rem; border:1.5px solid var(--border); border-radius:var(--radius-sm); font-size:.9rem; color:var(--text); outline:none; transition:border-color .18s; }
+    .cm-input:focus { border-color:var(--primary); }
+    .cm-input-error { border-color:#dc2626 !important; }
+    .cm-input-msg { font-size:.78rem; margin-top:.35rem; text-align:left; }
+    .cm-input-msg-err { color:#dc2626; }
+    .cm-submit-btn { width:100%; padding:.85rem; background:var(--primary); color:white; border:none; border-radius:var(--radius-sm); font-size:.95rem; font-weight:700; cursor:pointer; margin-top:.5rem; transition:background .18s; }
+    .cm-submit-btn:hover { background:var(--primary-dark); }
+    .cm-submit-btn:disabled { opacity:.7; cursor:not-allowed; }
+
+    /* Order type */
+    .cm-choose-card { background:var(--surface); border-radius:var(--radius); padding:2rem 1.5rem; margin:1rem; box-shadow:0 2px 12px rgba(0,0,0,.08); text-align:center; }
+    .cm-choose-icon { font-size:2.5rem; margin-bottom:1rem; }
+    .cm-choose-title { font-size:1.25rem; font-weight:700; color:var(--text); margin-bottom:.4rem; }
+    .cm-choose-sub { font-size:.875rem; color:var(--text-muted); margin-bottom:1.75rem; }
+    .cm-choose-options { display:flex; flex-direction:column; gap:.75rem; }
+    .cm-opt-btn { display:flex; align-items:center; gap:.875rem; padding:1rem 1.25rem; border-radius:var(--radius-sm); border:2px solid transparent; cursor:pointer; text-align:left; transition:all .18s; width:100%; }
+    .cm-opt-primary { background:var(--primary); color:white; }
+    .cm-opt-secondary { background:var(--surface); color:var(--text); border-color:var(--border); }
+    .cm-opt-emoji { font-size:1.5rem; }
+    .cm-opt-label { font-size:1rem; font-weight:700; }
+    .cm-opt-desc { font-size:.78rem; opacity:.8; }
+    .cm-delivery-soon { margin-top:1.25rem; font-size:.78rem; color:var(--text-muted); }
+
+    /* Categories */
+    .cm-cats-wrap { background:var(--surface); border-bottom:1px solid var(--border); position:sticky; top:65px; z-index:40; }
+    .cm-cats { display:flex; gap:.5rem; padding:.75rem 1rem; overflow-x:auto; scrollbar-width:none; }
+    .cm-cats::-webkit-scrollbar { display:none; }
+    .cm-cat-pill { padding:.4rem .9rem; background:var(--bg); border:1px solid var(--border); border-radius:2rem; font-size:.8rem; font-weight:500; color:var(--text-muted); cursor:pointer; transition:all .18s; white-space:nowrap; flex-shrink:0; }
+    .cm-cat-pill.active { background:var(--primary); border-color:var(--primary); color:white; font-weight:600; }
+    .cm-items-count { font-size:.75rem; color:var(--text-muted); padding:.625rem 1rem .25rem; }
+
+    /* Menu items */
+    .cm-item-card { background:var(--surface); border-bottom:1px solid var(--border); padding:.875rem 1rem; }
+    .cm-item-body { display:flex; align-items:flex-start; gap:.75rem; }
+    .cm-item-veg-dot { flex-shrink:0; margin-top:2px; }
+    .cm-item-text { flex:1; min-width:0; }
+    .cm-item-name { font-size:.92rem; font-weight:600; color:var(--text); }
+    .cm-item-desc { font-size:.78rem; color:var(--text-muted); margin-top:.2rem; line-height:1.4; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+    .cm-item-meta { display:flex; align-items:center; gap:.5rem; margin-top:.3rem; }
+    .cm-spicy { font-size:.82rem; }
+    .cm-tax-note { font-size:.68rem; color:var(--text-muted); background:var(--bg); padding:.1rem .35rem; border-radius:.25rem; }
+    .cm-item-price { font-size:1rem; font-weight:700; color:var(--text); margin-top:.3rem; }
+    .cm-item-actions { display:flex; flex-direction:column; align-items:center; gap:.5rem; flex-shrink:0; }
+    .cm-item-img { width:72px; height:72px; object-fit:cover; border-radius:var(--radius-sm); }
+    .cm-item-img-ph { width:72px; height:72px; border-radius:var(--radius-sm); background:var(--bg); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; font-size:1.5rem; }
+    .cm-add-btn { padding:.3rem .75rem; background:var(--surface); border:2px solid var(--primary); color:var(--primary); border-radius:var(--radius-sm); font-size:.78rem; font-weight:700; cursor:pointer; transition:all .18s; }
+    .cm-add-btn:hover { background:var(--primary); color:white; }
+    .cm-qty-ctrl { display:flex; align-items:center; gap:.25rem; background:var(--primary); border-radius:var(--radius-sm); overflow:hidden; }
+    .cm-qty-btn { width:28px; height:28px; border:none; background:transparent; color:white; font-size:1.1rem; font-weight:700; cursor:pointer; }
+    .cm-qty-num { min-width:22px; text-align:center; font-size:.85rem; font-weight:700; color:white; }
+    .cm-empty-cat { text-align:center; padding:3rem 1rem; color:var(--text-muted); }
+
+    /* Bill Card */
+    .cm-bill-card { background:var(--surface); margin:1rem; border-radius:var(--radius); border:1px solid var(--border); overflow:hidden; }
+    .cm-bill-head { display:flex; align-items:center; gap:.5rem; padding:.875rem 1rem; background:var(--bg); border-bottom:1px solid var(--border); font-size:.9rem; font-weight:700; color:var(--text); }
+    .cm-paid-chip { margin-left:auto; font-size:.72rem; font-weight:700; background:#d1fae5; color:#065f46; padding:.2rem .6rem; border-radius:2rem; }
+    .cm-bill-order { border-bottom:1px solid var(--border); }
+    .cm-bill-order-head { display:flex; align-items:center; justify-content:space-between; padding:.625rem 1rem; font-size:.78rem; font-weight:600; color:var(--text-muted); background:#fafafa; }
+    .cm-status-dot { font-size:.68rem; font-weight:700; padding:.15rem .45rem; border-radius:.25rem; }
+    .cm-status-dot[data-s="pending"]   { background:#fef3c7; color:#92400e; }
+    .cm-status-dot[data-s="accepted"]  { background:#dbeafe; color:#1e40af; }
+    .cm-status-dot[data-s="preparing"] { background:#dbeafe; color:#1e40af; }
+    .cm-status-dot[data-s="ready"]     { background:#d1fae5; color:#065f46; }
+    .cm-status-dot[data-s="served"]    { background:#f3e8ff; color:#6b21a8; }
+    .cm-status-dot[data-s="completed"] { background:#e0e7ff; color:#3730a3; }
+    .cm-bill-line { display:flex; justify-content:space-between; align-items:center; padding:.5rem 1rem; font-size:.82rem; }
+    .cm-bill-item { color:var(--text); flex:1; }
+    .cm-served-tag { font-size:.68rem; color:#6b7280; margin-left:.35rem; }
+    .cm-bill-amt { font-weight:600; color:var(--text); }
+    .cm-bill-totals { padding:.75rem 1rem; border-top:1px solid var(--border); }
+    .cm-bill-row { display:flex; justify-content:space-between; font-size:.85rem; padding:.2rem 0; color:var(--text); }
+    .cm-bill-tax { color:var(--text-muted); font-size:.8rem; }
+    .cm-bill-grand { font-weight:800; font-size:1rem; padding-top:.5rem; border-top:1px solid var(--border); margin-top:.35rem; }
+    .cm-bill-due { color:#dc2626; font-weight:700; }
+    .cm-paid-banner { background:#d1fae5; color:#065f46; padding:.75rem 1rem; font-size:.82rem; font-weight:600; text-align:center; }
+
+    /* Payment */
+    .cm-payment-section { padding:.75rem 1rem; border-top:1px solid var(--border); }
+    .cm-pay-btn { width:100%; padding:.85rem; background:#16a34a; color:white; border:none; border-radius:var(--radius-sm); font-size:.9rem; font-weight:700; cursor:pointer; transition:background .18s; }
+    .cm-pay-btn:hover { background:#15803d; }
+
+    /* Receipt */
+    .cm-receipt-btn { display:flex; align-items:center; justify-content:center; gap:.5rem; width:100%; padding:.75rem; background:transparent; border:none; border-top:1px solid var(--border); font-size:.82rem; color:var(--primary); font-weight:600; cursor:pointer; transition:all .18s; }
+    .cm-receipt-btn:hover { background:var(--primary-light); }
+    .cm-receipt-disabled { padding:.625rem 1rem; font-size:.75rem; color:var(--text-muted); text-align:center; border-top:1px solid var(--border); }
+
+    /* Previous Visits History */
+    .cm-history-card { background:var(--surface); margin:1rem; border-radius:var(--radius); border:1px solid var(--border); overflow:hidden; }
+    .cm-history-head { padding:.75rem 1rem; background:var(--bg); border-bottom:1px solid var(--border); font-size:.82rem; font-weight:700; color:var(--text-muted); }
+    .cm-history-row { display:flex; align-items:baseline; gap:.5rem; padding:.6rem 1rem; border-bottom:1px solid var(--border); font-size:.8rem; }
+    .cm-history-row:last-child { border-bottom:none; }
+    .cm-history-date { color:var(--text-muted); white-space:nowrap; flex-shrink:0; }
+    .cm-history-items { flex:1; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .cm-history-total { font-weight:700; color:var(--text); white-space:nowrap; }
+
+    /* Cart Footer */
+    .cm-cart-footer { position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:100%; max-width:600px; padding:.875rem 1rem; pointer-events:none; }
+    .cm-cart-btn { width:100%; padding:1rem 1.25rem; background:var(--primary); color:white; border:none; border-radius:var(--radius); font-size:.95rem; font-weight:700; cursor:pointer; transition:all .18s; display:flex; align-items:center; justify-content:space-between; box-shadow:0 4px 20px rgba(232,84,47,.45); pointer-events:auto; }
+    .cm-cart-btn:disabled { opacity:.7; cursor:not-allowed; }
+    .cm-cart-left { display:flex; align-items:center; gap:.625rem; }
+    .cm-cart-badge { background:white; color:var(--primary); font-size:.78rem; font-weight:800; width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center; }
+    .cm-cart-total { font-size:1rem; font-weight:800; }
+
+    /* Error Page */
+    .cm-error-page { display:flex; align-items:center; justify-content:center; }
+    .cm-error-box { text-align:center; padding:2.5rem 1.5rem; margin:2rem 1rem; background:var(--surface); border-radius:var(--radius); border:1px solid var(--border); }
+    .cm-error-icon { font-size:3rem; margin-bottom:1rem; }
+    .cm-error-title { font-size:1.25rem; font-weight:700; color:var(--text); margin-bottom:.5rem; }
+    .cm-error-desc { font-size:.875rem; color:var(--text-muted); line-height:1.5; }
+
+    /* Loading skeleton */
+    .sk { background:linear-gradient(90deg,#f0f0f0 25%,#e0e0e0 50%,#f0f0f0 75%); background-size:200% 100%; animation:shimmer 1.4s infinite; border-radius:.375rem; }
+    .sk-title { height:18px; width:160px; }
+    .sk-card { display:flex; gap:.875rem; padding:.875rem 1rem; border-bottom:1px solid var(--border); }
+    .sk-img { width:72px; height:72px; border-radius:var(--radius-sm); flex-shrink:0; }
+    .sk-lines { flex:1; display:flex; flex-direction:column; gap:.4rem; padding-top:.2rem; }
+    .sk-line-lg { height:14px; width:70%; }
+    .sk-line-md { height:12px; width:50%; }
+    @keyframes shimmer { to { background-position:-200% 0; } }
+
+    /* Modal */
+    .cm-modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:200; display:flex; align-items:center; justify-content:center; padding:1rem; }
+    .cm-modal { background:white; border-radius:var(--radius); padding:2rem 1.5rem; max-width:380px; width:100%; text-align:center; }
+    .cm-identity-modal { text-align:left; }
+    .cm-identity-modal .cm-modal-icon { text-align:center; display:block; }
+    .cm-identity-modal .cm-modal-title { text-align:center; }
+    .cm-identity-modal .cm-modal-body { text-align:center; }
+    .cm-modal-icon { font-size:2.5rem; margin-bottom:.75rem; }
+    .cm-modal-title { font-size:1.1rem; font-weight:700; color:var(--text); margin-bottom:.5rem; }
+    .cm-modal-body { font-size:.875rem; color:var(--text-muted); line-height:1.6; margin-bottom:1.25rem; }
+    .cm-modal-close { padding:.75rem 2rem; background:var(--primary); color:white; border:none; border-radius:var(--radius-sm); font-size:.9rem; font-weight:700; cursor:pointer; }
+    .cm-modal-cancel { display:block; width:100%; padding:.65rem; background:transparent; border:1px solid var(--border); color:var(--text-muted); border-radius:var(--radius-sm); font-size:.85rem; cursor:pointer; margin-top:.625rem; }
+
+    /* Receipt Modal */
+    .cm-receipt-modal { background:white; border-radius:var(--radius); max-width:420px; width:100%; max-height:90vh; display:flex; flex-direction:column; overflow:hidden; }
+    .cm-receipt-content { flex:1; overflow-y:auto; padding:1rem; }
+    .cm-receipt-actions { display:flex; gap:.75rem; padding:1rem; border-top:1px solid var(--border); }
+    .cm-print-btn-modal { flex:1; padding:.75rem; background:var(--primary); color:white; border:none; border-radius:var(--radius-sm); font-size:.9rem; font-weight:700; cursor:pointer; }
+    .cm-close-btn { flex:1; padding:.75rem; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:var(--radius-sm); font-size:.9rem; font-weight:600; cursor:pointer; }
+
+    /* Receipt Content */
+    .rcpt { font-family:'Courier New',monospace; font-size:12px; color:#111; text-align:center; max-width:320px; margin:0 auto; }
+    .rcpt-logo { width:72px; height:72px; object-fit:contain; margin-bottom:.5rem; border-radius:8px; }
+    .rcpt-name { font-size:16px; font-weight:bold; text-transform:uppercase; letter-spacing:.05em; margin-bottom:.25rem; }
+    .rcpt-addr { font-size:11px; color:#444; margin:.1rem 0; }
+    .rcpt-divider { color:#666; margin:.5rem 0; font-size:10px; overflow:hidden; }
+    .rcpt-invoice-title { font-size:12px; font-weight:bold; text-transform:uppercase; letter-spacing:.06em; margin:.25rem 0; }
+    .rcpt-details { text-align:left; margin:.5rem 0; }
+    .rcpt-detail-row { display:flex; justify-content:space-between; font-size:11px; padding:.15rem 0; }
+    .rcpt-detail-row span:first-child { color:#666; }
+    .rcpt-detail-row span:last-child { font-weight:600; text-align:right; flex:1; margin-left:.5rem; }
+    .rcpt-table { width:100%; border-collapse:collapse; font-size:11px; margin:.5rem 0; }
+    .rcpt-table th { border-bottom:1px dashed #999; padding:.25rem .1rem; font-weight:bold; text-align:left; }
+    .rcpt-table td { padding:.2rem .1rem; vertical-align:top; }
+    .rcpt-num { text-align:right; }
+    .rcpt-variant { color:#666; font-size:10px; }
+    .rcpt-totals { text-align:left; }
+    .rcpt-total-row { display:flex; justify-content:space-between; font-size:11px; padding:.2rem 0; }
+    .rcpt-tax-row { color:#555; }
+    .rcpt-grand-total { font-size:14px; font-weight:bold; padding:.5rem 0; }
+    .rcpt-footer { font-size:13px; font-weight:bold; margin:.3rem 0; text-transform:uppercase; letter-spacing:.05em; }
+    .rcpt-footer-sub { font-size:11px; font-weight:normal; text-transform:none; color:#555; }
+    .rcpt-footer-web { font-size:10px; color:#777; font-weight:normal; text-transform:none; margin-top:.2rem; }
+
+    @media print {
+      :host { all:unset; }
+      .cm-receipt-actions, .cm-modal-overlay > *:not(.cm-receipt-modal) { display:none; }
+      .cm-receipt-modal { box-shadow:none; border:none; max-height:none; }
+      .rcpt { margin:0 auto; }
+    }
+  `]
+})
+export class CustomerMenuComponent implements OnInit, OnChanges {
+  @Input() qrToken!: string;
+
+  protected readonly Math = Math;
+
+  private api  = inject(ApiService);
+  private sock = inject(SocketService);
+
+  loading              = signal(true);
+  data                 = signal<any>(null);
+  bill                 = signal<any>(null);
+  receipt              = signal<any>(null);
+  cart                 = signal<CartLine[]>([]);
+  orderType            = signal<'DINING' | 'TAKEAWAY' | null>(null);
+  activeCat            = signal<string>('');
+  placing              = signal(false);
+  customerToken        = signal<string | null>(null);
+  identityError        = signal<string>('');
+  submittingIdentity   = signal(false);
+  showIdentityModal    = signal(false);
+  pastOrders           = signal<any[]>([]);
+  showPaymentComingSoon = false;
+
+  custName   = '';
+  custMobile = '';
+
+  isMobileValid() { return /^\d{10}$/.test(this.custMobile.trim()); }
+
+  hasTaxes(b: any): boolean {
+    return Array.isArray(b?.taxes) && b.taxes.some((t: any) => (t.amount || 0) > 0);
+  }
+
+  visibleItems = computed(() =>
+    (this.data()?.items ?? []).filter((i: MenuItem) =>
+      !this.activeCat() || i.categoryId === this.activeCat()
+    )
+  );
+  cartCount = computed(() => this.cart().reduce((s, l) => s + l.qty, 0));
+  cartTotal = computed(() =>
+    this.cart().reduce((s, l) => {
+      const tax = (l.item.taxes || []).reduce((t: number, x: any) => t + (x.rate || 0), 0);
+      return s + l.qty * l.item.price * (1 + tax / 100);
+    }, 0)
+  );
+
+  private tokenKey(): string {
+    return CUSTOMER_TOKEN_PREFIX + (this.data()?.sessionToken ?? 'default');
+  }
+
+  ngOnChanges(c: SimpleChanges) {
+    if (c['qrToken'] && this.qrToken) this.fetchMenu();
+  }
+  ngOnInit() {
+    if (this.qrToken && !this.data()) this.fetchMenu();
+  }
+
+  private fetchMenu() {
+    this.loading.set(true);
+    this.api.get<any>(`/public/qr/${this.qrToken}`).subscribe({
+      next: ({ data }) => {
+        this.data.set(data);
+        this.loading.set(false);
+        this.restoreCustomerSession(data.sessionToken);
+        // Listen on customer's own room — subscribed after we get customerToken
+      },
+      error: () => { this.data.set(null); this.loading.set(false); }
+    });
+  }
+
+  private subscribeCustomerSocket(customerToken: string) {
+    this.sock.joinCustomerRoom(customerToken);
+    this.sock.on<any>('bill:updated').subscribe((b: any) => this.bill.set(b));
+    this.sock.on<any>('order:updated').subscribe(() => this.refreshBill());
+  }
+
+  private restoreCustomerSession(_sessionToken: string) {
+    const stored = localStorage.getItem(this.tokenKey());
+    if (!stored) return;
+
+    this.api.get<any>(`/public/bill/${stored}`).subscribe({
+      next: ({ data }) => {
+        this.customerToken.set(stored);
+        this.bill.set(data);
+        if (data.pastOrders?.length) this.pastOrders.set(data.pastOrders);
+        this.subscribeCustomerSocket(stored);
+      },
+      error: () => {
+        localStorage.removeItem(this.tokenKey());
+        this.customerToken.set(null);
+      }
+    });
+  }
+
+  // Called when user clicks Place Order — opens identity popup if not yet identified
+  requestPlaceOrder() {
+    if (!this.customerToken()) {
+      this.identityError.set('');
+      this.showIdentityModal.set(true);
+    } else {
+      this.doPlaceOrder();
+    }
+  }
+
+  submitIdentity() {
+    this.identityError.set('');
+    if (!this.custName.trim()) { this.identityError.set('Please enter your name'); return; }
+    if (!this.isMobileValid()) { this.identityError.set('Please enter a valid 10-digit mobile number'); return; }
+
+    this.submittingIdentity.set(true);
+    this.api.post<any>('/public/customer-session', {
+      sessionToken: this.data().sessionToken,
+      customerName: this.custName.trim(),
+      mobileNumber: this.custMobile.trim()
+    }).subscribe({
+      next: ({ data }) => {
+        const token = data.customerToken;
+        localStorage.setItem(this.tokenKey(), token);
+        this.customerToken.set(token);
+        if (data.pastOrders?.length) this.pastOrders.set(data.pastOrders);
+        this.submittingIdentity.set(false);
+        this.showIdentityModal.set(false);
+        this.subscribeCustomerSocket(token);
+        this.refreshBill();
+        this.doPlaceOrder();
+      },
+      error: (err: any) => {
+        this.identityError.set(err?.error?.message || 'Something went wrong. Please try again.');
+        this.submittingIdentity.set(false);
+      }
+    });
+  }
+
+  private doPlaceOrder() {
+    this.placing.set(true);
+    this.api.post<any>('/public/orders', {
+      sessionToken: this.data().sessionToken,
+      customerToken: this.customerToken(),
+      orderType: this.orderType(),
+      items: this.cart().map(l => ({ menuItemId: l.item._id, qty: l.qty }))
+    }).subscribe({
+      next: ({ data }) => { this.bill.set(data.bill); this.cart.set([]); this.placing.set(false); },
+      error: () => this.placing.set(false)
+    });
+  }
+
+  getQty(item: MenuItem): number {
+    return this.cart().find(l => l.item._id === item._id)?.qty ?? 0;
+  }
+
+  add(item: MenuItem) {
+    const lines = [...this.cart()];
+    const ex = lines.find(l => l.item._id === item._id);
+    if (ex) ex.qty++; else lines.push({ item, qty: 1 });
+    this.cart.set(lines);
+  }
+
+  remove(item: MenuItem) {
+    const lines = [...this.cart()];
+    const idx = lines.findIndex(l => l.item._id === item._id);
+    if (idx === -1) return;
+    if (lines[idx].qty > 1) lines[idx].qty--; else lines.splice(idx, 1);
+    this.cart.set(lines);
+  }
+
+  refreshBill() {
+    const token = this.customerToken();
+    if (token) this.api.get<any>(`/public/bill/${token}`).subscribe({
+      next: ({ data }) => this.bill.set(data),
+      error: () => {}
+    });
+  }
+
+  viewReceipt() {
+    const token = this.customerToken();
+    if (!token) return;
+    this.api.get<any>(`/public/receipt/${token}`).subscribe({
+      next: ({ data }) => this.receipt.set(data),
+      error: () => {}
+    });
+  }
+
+  closeReceipt() { this.receipt.set(null); }
+  printReceipt() { window.print(); }
+}
