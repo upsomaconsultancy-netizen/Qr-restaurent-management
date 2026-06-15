@@ -6,6 +6,7 @@ const Order = require('../models/Order');
 const Table = require('../models/Table');
 const ApiError = require('../utils/ApiError');
 const { audit } = require('../utils/audit');
+const { uploadImage, deleteImage } = require('../config/cloudinary');
 
 const createSchema = Joi.object({
   name: Joi.string().min(2).required(),
@@ -44,6 +45,8 @@ exports.createRestaurant = async (req, res) => {
   if (error) throw ApiError.badRequest('Validation failed', error.details.map(d => d.message));
 
   if (await Restaurant.findOne({ code: value.code })) throw ApiError.conflict('Restaurant code already exists');
+  if (await Restaurant.findOne({ phone: value.phone, isDeleted: false })) throw ApiError.conflict('A restaurant with this phone number already exists');
+  if (await User.findOne({ email: value.ownerEmail })) throw ApiError.conflict('Owner email is already registered');
 
   const restaurant = await Restaurant.create({
     name: value.name, code: value.code, email: value.email,
@@ -70,7 +73,11 @@ exports.createRestaurant = async (req, res) => {
     email: value.ownerEmail, role: 'OWNER'
   });
   await owner.setPassword(value.ownerPassword);
-  await owner.save();
+  await owner.save().catch(async (e) => {
+    await Restaurant.findByIdAndDelete(restaurant._id);
+    if (e.code === 11000) throw ApiError.conflict('Owner email is already registered');
+    throw e;
+  });
 
   audit({ req, action: 'RESTAURANT_CREATED', entity: 'Restaurant', entityId: restaurant._id });
   res.status(201).json({ success: true, data: { restaurant, owner: { id: owner._id, email: owner.email } } });
@@ -187,6 +194,25 @@ exports.setPlan = async (req, res) => {
   if (!r) throw ApiError.notFound('Restaurant not found');
   audit({ req, action: 'PLAN_CHANGED', entity: 'Restaurant', entityId: r._id, meta: { plan } });
   res.json({ success: true, data: r });
+};
+
+exports.uploadLogo = async (req, res) => {
+  if (!req.file) throw ApiError.badRequest('No image file provided');
+
+  const restaurant = await Restaurant.findOne({ _id: req.params.id, isDeleted: false });
+  if (!restaurant) throw ApiError.notFound('Restaurant not found');
+
+  if (restaurant.logoPublicId) {
+    await deleteImage(restaurant.logoPublicId).catch(() => {});
+  }
+
+  const result = await uploadImage(req.file.buffer, `ros/${restaurant._id}/logo`);
+  restaurant.logoUrl = result.secure_url;
+  restaurant.logoPublicId = result.public_id;
+  await restaurant.save();
+
+  audit({ req, action: 'RESTAURANT_LOGO_UPDATED', entity: 'Restaurant', entityId: restaurant._id });
+  res.json({ success: true, data: { logoUrl: restaurant.logoUrl } });
 };
 
 exports.softDelete = async (req, res) => {

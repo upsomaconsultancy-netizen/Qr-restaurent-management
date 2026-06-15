@@ -69,6 +69,7 @@ router.get('/analytics/customers/:mobile',   permit('OWNER', 'MANAGER'), asyncH(
 // Restaurant profile (owner can update receipt details, GSTIN, website, service charge)
 router.get('/restaurant/profile', permit('OWNER', 'MANAGER', 'WAITER'), asyncH(require('../controllers/restaurant.controller').getProfile));
 router.patch('/restaurant/profile', permit('OWNER', 'MANAGER'), asyncH(require('../controllers/restaurant.controller').updateProfile));
+router.patch('/restaurant/logo', permit('OWNER'), upload.single('logo'), asyncH(require('../controllers/restaurant.controller').uploadLogo));
 
 // Staff management
 router.get('/staff', permit('OWNER', 'MANAGER'), asyncH(staff.list));

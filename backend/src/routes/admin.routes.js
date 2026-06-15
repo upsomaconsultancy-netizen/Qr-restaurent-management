@@ -3,6 +3,7 @@ const asyncH = require('../utils/asyncHandler');
 const ctrl = require('../controllers/admin.controller');
 const { requireAuth } = require('../middleware/auth');
 const { permit } = require('../middleware/rbac');
+const { upload } = require('../middleware/upload');
 
 router.use(requireAuth, permit('SUPER_ADMIN'));
 
@@ -11,6 +12,7 @@ router.get('/restaurants', asyncH(ctrl.listRestaurants));
 router.post('/restaurants', asyncH(ctrl.createRestaurant));
 router.get('/restaurants/:id', asyncH(ctrl.getRestaurant));
 router.patch('/restaurants/:id', asyncH(ctrl.updateRestaurant));
+router.patch('/restaurants/:id/logo', upload.single('logo'), asyncH(ctrl.uploadLogo));
 router.patch('/restaurants/:id/status', asyncH(ctrl.setStatus));
 router.patch('/restaurants/:id/table-limit', asyncH(ctrl.setTableLimit));
 router.patch('/restaurants/:id/plan', asyncH(ctrl.setPlan));

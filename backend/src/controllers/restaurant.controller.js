@@ -1,6 +1,7 @@
 const Restaurant = require('../models/Restaurant');
 const ApiError = require('../utils/ApiError');
 const { audit } = require('../utils/audit');
+const { uploadImage, deleteImage } = require('../config/cloudinary');
 
 exports.getProfile = async (req, res) => {
   const r = await Restaurant.findById(req.user.restaurantId).lean();
@@ -30,4 +31,23 @@ exports.updateProfile = async (req, res) => {
 
   audit({ req, action: 'RESTAURANT_PROFILE_UPDATED', entity: 'Restaurant', entityId: r._id });
   res.json({ success: true, data: r });
+};
+
+exports.uploadLogo = async (req, res) => {
+  if (!req.file) throw ApiError.badRequest('No image file provided');
+
+  const restaurant = await Restaurant.findById(req.user.restaurantId);
+  if (!restaurant) throw ApiError.notFound('Restaurant not found');
+
+  if (restaurant.logoPublicId) {
+    await deleteImage(restaurant.logoPublicId).catch(() => {});
+  }
+
+  const result = await uploadImage(req.file.buffer, `ros/${restaurant._id}/logo`);
+  restaurant.logoUrl = result.secure_url;
+  restaurant.logoPublicId = result.public_id;
+  await restaurant.save();
+
+  audit({ req, action: 'RESTAURANT_LOGO_UPDATED', entity: 'Restaurant', entityId: restaurant._id });
+  res.json({ success: true, data: { logoUrl: restaurant.logoUrl } });
 };

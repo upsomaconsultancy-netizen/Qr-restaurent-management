@@ -19,4 +19,7 @@ export class ApiService {
   delete<T>(path: string) {
     return this.http.delete<{ success: boolean; data: T }>(`${this.base}${path}`);
   }
+  patchForm<T>(path: string, formData: FormData) {
+    return this.http.patch<{ success: boolean; data: T }>(`${this.base}${path}`, formData);
+  }
 }

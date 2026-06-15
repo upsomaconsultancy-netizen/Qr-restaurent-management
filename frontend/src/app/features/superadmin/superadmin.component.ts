@@ -184,8 +184,17 @@ const BLANK_OUTLET = () => ({ name: '', address: '', phone: '', email: '' });
             @for (r of restaurants(); track r._id) {
               <tr>
                 <td>
-                  <div class="sa-rest-name">{{ r.name }}</div>
-                  @if (r.gstin) { <div class="sa-rest-meta">GST: {{ r.gstin }}</div> }
+                  <div style="display:flex;align-items:center;gap:.625rem;">
+                    @if (r.logoUrl) {
+                      <img [src]="r.logoUrl" alt="logo" class="sa-rest-logo">
+                    } @else {
+                      <div class="sa-rest-logo-placeholder">{{ r.name[0] }}</div>
+                    }
+                    <div>
+                      <div class="sa-rest-name">{{ r.name }}</div>
+                      @if (r.gstin) { <div class="sa-rest-meta">GST: {{ r.gstin }}</div> }
+                    </div>
+                  </div>
                 </td>
                 <td><span class="sa-code-badge">{{ r.code }}</span></td>
                 <td>
@@ -265,7 +274,29 @@ const BLANK_OUTLET = () => ({ name: '', address: '', phone: '', email: '' });
           </div>
         </div>
 
-        <div class="sa-form-section-lbl">Restaurant Details</div>
+        <div class="sa-form-section-lbl">Restaurant Logo</div>
+        <div class="sa-logo-upload-row">
+          @if (createLogoPreview()) {
+            <img [src]="createLogoPreview()!" alt="preview" class="sa-logo-preview">
+          } @else {
+            <div class="sa-logo-preview sa-logo-placeholder">
+              {{ form.name?.[0]?.toUpperCase() || '?' }}
+            </div>
+          }
+          <div class="sa-logo-upload-info">
+            <label class="sa-btn-ghost sa-logo-btn" style="cursor:pointer;">
+              Choose Logo (optional)
+              <input type="file" accept="image/jpeg,image/png,image/webp" style="display:none"
+                (change)="onCreateLogoSelected($event)">
+            </label>
+            <div class="sa-logo-hint">JPG, PNG or WebP · Max 5 MB · Will upload after restaurant is created</div>
+            @if (createLogoFile()) {
+              <div class="sa-logo-hint" style="color:#059669;">{{ createLogoFile()!.name }} selected</div>
+            }
+          </div>
+        </div>
+
+        <div class="sa-form-section-lbl" style="margin-top:1.5rem">Restaurant Details</div>
         <div class="sa-form-grid">
           <div class="sa-field">
             <label class="sa-label">Restaurant Name *</label>
@@ -341,7 +372,7 @@ const BLANK_OUTLET = () => ({ name: '', address: '', phone: '', email: '' });
           </div>
         }
         <div class="sa-form-footer">
-          <button class="sa-btn-primary sa-btn-lg" (click)="create()" [disabled]="creating()">
+          <button class="sa-btn-primary sa-btn-lg" (click)="create()" [disabled]="creating() || !createFormValid()">
             @if (creating()) { Creating... } @else { Create Restaurant }
           </button>
         </div>
@@ -366,7 +397,30 @@ const BLANK_OUTLET = () => ({ name: '', address: '', phone: '', email: '' });
           </button>
         </div>
         <div class="sa-modal-body">
-          <div class="sa-form-section-lbl">Restaurant Details</div>
+          <div class="sa-form-section-lbl">Restaurant Logo</div>
+          <div class="sa-logo-upload-row">
+            @if (editTarget()?.logoUrl) {
+              <img [src]="editTarget()!.logoUrl" alt="logo" class="sa-logo-preview">
+            } @else {
+              <div class="sa-logo-preview sa-logo-placeholder">{{ editTarget()?.name?.[0] }}</div>
+            }
+            <div class="sa-logo-upload-info">
+              <label class="sa-btn-ghost sa-logo-btn" style="cursor:pointer;">
+                Upload Logo
+                <input type="file" accept="image/jpeg,image/png,image/webp" style="display:none"
+                  (change)="onLogoSelected($event)">
+              </label>
+              <div class="sa-logo-hint">JPG, PNG or WebP · Max 5MB</div>
+              @if (logoUploading()) {
+                <div class="sa-logo-hint" style="color:#4f46e5;">Uploading...</div>
+              }
+              @if (logoUploadMsg()) {
+                <div class="sa-logo-hint" [style.color]="logoUploadOk() ? '#059669' : '#dc2626'">{{ logoUploadMsg() }}</div>
+              }
+            </div>
+          </div>
+
+          <div class="sa-form-section-lbl" style="margin-top:1.25rem">Restaurant Details</div>
           <div class="sa-form-grid">
             <div class="sa-field">
               <label class="sa-label">Name</label>
@@ -429,7 +483,7 @@ const BLANK_OUTLET = () => ({ name: '', address: '', phone: '', email: '' });
         </div>
         <div class="sa-modal-footer">
           <button class="sa-btn-ghost" (click)="closeEdit()">Cancel</button>
-          <button class="sa-btn-primary" (click)="saveEdit()" [disabled]="saving()">
+          <button class="sa-btn-primary" (click)="saveEdit()" [disabled]="saving() || !editFormValid()">
             {{ saving() ? 'Saving...' : 'Save Changes' }}
           </button>
         </div>
@@ -442,9 +496,16 @@ const BLANK_OUTLET = () => ({ name: '', address: '', phone: '', email: '' });
     <div class="sa-overlay" (click)="closeOutlets()">
       <div class="sa-modal sa-modal-lg" (click)="$event.stopPropagation()">
         <div class="sa-modal-header">
-          <div>
-            <h3 class="sa-modal-title">Manage Outlets</h3>
-            <p class="sa-modal-sub">{{ outletsTarget()?.name }} — branches and locations</p>
+          <div style="display:flex;align-items:center;gap:.75rem;">
+            @if (outletsTarget()?.logoUrl) {
+              <img [src]="outletsTarget()!.logoUrl" alt="logo" class="sa-logo-preview" style="width:44px;height:44px;">
+            } @else {
+              <div class="sa-rest-logo-placeholder" style="width:44px;height:44px;font-size:1rem;">{{ outletsTarget()?.name?.[0] }}</div>
+            }
+            <div>
+              <h3 class="sa-modal-title">Manage Outlets</h3>
+              <p class="sa-modal-sub">{{ outletsTarget()?.name }} — branches and locations</p>
+            </div>
           </div>
           <button class="sa-modal-close" (click)="closeOutlets()">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -536,12 +597,12 @@ const BLANK_OUTLET = () => ({ name: '', address: '', phone: '', email: '' });
         <div class="sa-modal-footer">
           @if (editingOutlet()) {
             <button class="sa-btn-ghost" (click)="cancelEditOutlet()">Cancel</button>
-            <button class="sa-btn-primary" (click)="saveOutlet()" [disabled]="savingOutlet()">
+            <button class="sa-btn-primary" (click)="saveOutlet()" [disabled]="savingOutlet() || !outletFormValid()">
               {{ savingOutlet() ? 'Saving...' : 'Update Outlet' }}
             </button>
           } @else {
             <button class="sa-btn-ghost" (click)="closeOutlets()">Close</button>
-            <button class="sa-btn-primary" (click)="saveOutlet()" [disabled]="savingOutlet()">
+            <button class="sa-btn-primary" (click)="saveOutlet()" [disabled]="savingOutlet() || !outletFormValid()">
               {{ savingOutlet() ? 'Adding...' : 'Add Outlet' }}
             </button>
           }
@@ -627,12 +688,12 @@ const BLANK_OUTLET = () => ({ name: '', address: '', phone: '', email: '' });
         <div class="sa-modal-footer">
           @if (editingUser()) {
             <button class="sa-btn-ghost" (click)="cancelEditUser()">Cancel Edit</button>
-            <button class="sa-btn-primary" (click)="saveUser()" [disabled]="savingUser()">
+            <button class="sa-btn-primary" (click)="saveUser()" [disabled]="savingUser() || !userEditFormValid()">
               {{ savingUser() ? 'Saving...' : 'Update User' }}
             </button>
           } @else {
             <button class="sa-btn-ghost" (click)="closeUsers()">Close</button>
-            <button class="sa-btn-primary" (click)="saveUser()" [disabled]="savingUser()">
+            <button class="sa-btn-primary" (click)="saveUser()" [disabled]="savingUser() || !userAddFormValid()">
               {{ savingUser() ? 'Adding...' : 'Add User' }}
             </button>
           }
@@ -928,6 +989,35 @@ const BLANK_OUTLET = () => ({ name: '', address: '', phone: '', email: '' });
     .sa-status-dot.active   { background: #10b981; }
     .sa-status-dot.inactive { background: #d1d5db; }
 
+    /* ── Logo ── */
+    .sa-rest-logo {
+      width: 36px; height: 36px; border-radius: 8px; object-fit: cover;
+      border: 1px solid var(--c-border); flex-shrink: 0;
+    }
+    .sa-rest-logo-placeholder {
+      width: 36px; height: 36px; border-radius: 8px; flex-shrink: 0;
+      background: linear-gradient(135deg, #4f46e5, #7c3aed);
+      color: #fff; display: flex; align-items: center; justify-content: center;
+      font-size: .82rem; font-weight: 700; text-transform: uppercase;
+    }
+    .sa-logo-upload-row {
+      display: flex; align-items: center; gap: 1rem;
+      padding: .875rem; border: 1px dashed var(--c-border);
+      border-radius: var(--radius-sm); background: #fafafa;
+    }
+    .sa-logo-preview {
+      width: 72px; height: 72px; border-radius: 10px; object-fit: cover;
+      border: 1px solid var(--c-border); flex-shrink: 0;
+    }
+    .sa-logo-placeholder {
+      background: linear-gradient(135deg, #4f46e5, #7c3aed);
+      color: #fff; display: flex; align-items: center; justify-content: center;
+      font-size: 1.5rem; font-weight: 700; text-transform: uppercase;
+    }
+    .sa-logo-upload-info { display: flex; flex-direction: column; gap: .4rem; }
+    .sa-logo-btn { font-size: .8rem; padding: .4rem .875rem; }
+    .sa-logo-hint { font-size: .72rem; color: var(--c-muted); }
+
     /* ── Responsive ── */
     @media (max-width: 640px) {
       .sa-body { padding: .875rem; gap: 1rem; }
@@ -949,6 +1039,9 @@ export class SuperadminComponent implements OnInit {
   msgType     = signal<'success'|'error'>('success');
   creating    = signal(false);
   form: any   = BLANK_FORM();
+
+  createLogoFile   = signal<File | null>(null);
+  createLogoPreview = signal<string | null>(null);
 
   editModal   = signal(false);
   editTarget  = signal<any>(null);
@@ -975,6 +1068,10 @@ export class SuperadminComponent implements OnInit {
   editingUser     = signal<any>(null);
   userForm: any   = BLANK_USER();
 
+  logoUploading   = signal(false);
+  logoUploadMsg   = signal('');
+  logoUploadOk    = signal(false);
+
   ngOnInit() { this.load(); }
 
   load() {
@@ -995,14 +1092,42 @@ export class SuperadminComponent implements OnInit {
     document.getElementById('create-form')?.scrollIntoView({ behavior: 'smooth' });
   }
 
+  onCreateLogoSelected(event: Event) {
+    const file = (event.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+    this.createLogoFile.set(file);
+    const reader = new FileReader();
+    reader.onload = (e) => this.createLogoPreview.set(e.target?.result as string);
+    reader.readAsDataURL(file);
+  }
+
   create() {
     this.creating.set(true);
     this.msg.set('');
-    this.api.post('/admin/restaurants', this.form).subscribe({
-      next: () => {
-        this.msg.set('Restaurant created successfully!');
-        this.msgType.set('success');
+    this.api.post<any>('/admin/restaurants', this.form).subscribe({
+      next: ({ data }) => {
+        const restaurantId = data.restaurant._id;
+        const logoFile = this.createLogoFile();
+        if (logoFile && restaurantId) {
+          const fd = new FormData();
+          fd.append('logo', logoFile);
+          this.api.patchForm(`/admin/restaurants/${restaurantId}/logo`, fd).subscribe({
+            next: () => {
+              this.msg.set('Restaurant created with logo successfully!');
+              this.msgType.set('success');
+            },
+            error: () => {
+              this.msg.set('Restaurant created! But logo upload failed — you can upload it from Edit.');
+              this.msgType.set('success');
+            }
+          });
+        } else {
+          this.msg.set('Restaurant created successfully!');
+          this.msgType.set('success');
+        }
         this.form = BLANK_FORM();
+        this.createLogoFile.set(null);
+        this.createLogoPreview.set(null);
         this.load();
         this.creating.set(false);
       },
@@ -1025,7 +1150,34 @@ export class SuperadminComponent implements OnInit {
       plan: r.plan, tableLimit: r.tableLimit, status: r.status
     };
     this.editMsg.set('');
+    this.logoUploadMsg.set('');
+    this.logoUploadOk.set(false);
     this.editModal.set(true);
+  }
+
+  onLogoSelected(event: Event) {
+    const file = (event.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+    const id = this.editTarget()?._id;
+    if (!id) return;
+    const fd = new FormData();
+    fd.append('logo', file);
+    this.logoUploading.set(true);
+    this.logoUploadMsg.set('');
+    this.api.patchForm<{ logoUrl: string }>(`/admin/restaurants/${id}/logo`, fd).subscribe({
+      next: ({ data }) => {
+        this.editTarget.set({ ...this.editTarget(), logoUrl: data.logoUrl });
+        this.restaurants.update(list => list.map(r => r._id === id ? { ...r, logoUrl: data.logoUrl } : r));
+        this.logoUploading.set(false);
+        this.logoUploadMsg.set('Logo updated successfully!');
+        this.logoUploadOk.set(true);
+      },
+      error: (e) => {
+        this.logoUploading.set(false);
+        this.logoUploadMsg.set(e?.error?.message || 'Upload failed');
+        this.logoUploadOk.set(false);
+      }
+    });
   }
 
   closeEdit() { this.editModal.set(false); }
@@ -1213,5 +1365,42 @@ export class SuperadminComponent implements OnInit {
   roleBadgeClass(role: string): string {
     const m: Record<string,string> = { OWNER: 'owner', MANAGER: 'manager', WAITER: 'waiter', KITCHEN: 'kitchen' };
     return 'sa-role-badge ' + (m[role] || '');
+  }
+
+  // ── Form validation helpers ──────────────────────────────────
+
+  createFormValid(): boolean {
+    const f = this.form;
+    return !!(
+      f.name?.trim() &&
+      f.code?.trim() &&
+      f.email?.trim() &&
+      f.phone?.trim() &&
+      f.address?.trim() &&
+      f.ownerName?.trim() &&
+      f.ownerEmail?.trim() &&
+      f.ownerPassword?.length >= 8
+    );
+  }
+
+  editFormValid(): boolean {
+    const f = this.editForm;
+    return !!(f.name?.trim() && f.email?.trim() && f.phone?.trim() && f.address?.trim());
+  }
+
+  outletFormValid(): boolean {
+    return !!(this.outletForm.name?.trim() && this.outletForm.address?.trim());
+  }
+
+  userAddFormValid(): boolean {
+    const f = this.userForm;
+    return !!(f.name?.trim() && f.email?.trim() && f.password?.length >= 8 && f.role);
+  }
+
+  userEditFormValid(): boolean {
+    const f = this.userForm;
+    // password optional on edit — only validate length if provided
+    return !!(f.name?.trim() && f.email?.trim() && f.role &&
+              (!f.password || f.password.length >= 8));
   }
 }

@@ -30,7 +30,7 @@ function parseDateRange(query) {
  */
 exports.favorites = async (req, res) => {
   const restaurantId = req.user.restaurantId;
-  const { category, item, page = 1, limit = 50 } = req.query;
+  const { category, item, page = 1, limit = 50, outletId } = req.query;
   const dateRange = parseDateRange(req.query);
 
   const orderMatch = {
@@ -40,6 +40,14 @@ exports.favorites = async (req, res) => {
     customerSessionId: { $exists: true, $ne: null }
   };
   if (dateRange) orderMatch.createdAt = dateRange;
+
+  // MANAGER sees only their outlet; OWNER sees all unless outletId passed
+  const effectiveOutletId = outletId || (req.user.role === 'MANAGER' ? req.user.outletId : null);
+  if (effectiveOutletId) {
+    orderMatch.outletId = effectiveOutletId instanceof mongoose.Types.ObjectId
+      ? effectiveOutletId
+      : new mongoose.Types.ObjectId(effectiveOutletId);
+  }
 
   // Build item name search
   const itemNameFilter = item ? { $regex: item, $options: 'i' } : undefined;
@@ -125,19 +133,26 @@ exports.customerProfile = async (req, res) => {
   const restaurantId = req.user.restaurantId;
   const { mobile } = req.params;
 
-  const sessions = await CustomerSession.find({ restaurantId, mobileNumber: mobile })
+  const sessionQuery = { restaurantId, mobileNumber: mobile };
+  const effectiveOutletId = req.user.role === 'MANAGER' ? req.user.outletId : null;
+  if (effectiveOutletId) sessionQuery.outletId = effectiveOutletId;
+
+  const sessions = await CustomerSession.find(sessionQuery)
     .sort('-createdAt')
     .populate('tableId', 'number name')
     .lean();
   if (!sessions.length) throw ApiError.notFound('No sessions found for this mobile number');
 
   const sessionIds = sessions.map((s) => s._id);
-  const orders = await Order.find({
+  const orderQuery = {
     restaurantId,
     customerSessionId: { $in: sessionIds },
     isDeleted: false,
     status: { $in: ['SERVED', 'PAYMENT_COMPLETED', 'CLOSED', 'COMPLETED'] }
-  }).sort('createdAt').lean();
+  };
+  if (effectiveOutletId) orderQuery.outletId = effectiveOutletId;
+
+  const orders = await Order.find(orderQuery).sort('createdAt').lean();
 
   // Item frequency map
   const itemMap = new Map();
@@ -184,6 +199,7 @@ exports.customerProfile = async (req, res) => {
  */
 exports.exportFavorites = async (req, res) => {
   const restaurantId = req.user.restaurantId;
+  const { outletId } = req.query;
   const dateRange = parseDateRange(req.query);
 
   const orderMatch = {
@@ -193,6 +209,13 @@ exports.exportFavorites = async (req, res) => {
     customerSessionId: { $exists: true, $ne: null }
   };
   if (dateRange) orderMatch.createdAt = dateRange;
+
+  const effectiveOutletId = outletId || (req.user.role === 'MANAGER' ? req.user.outletId : null);
+  if (effectiveOutletId) {
+    orderMatch.outletId = effectiveOutletId instanceof mongoose.Types.ObjectId
+      ? effectiveOutletId
+      : new mongoose.Types.ObjectId(effectiveOutletId);
+  }
 
   const pipeline = [
     { $match: orderMatch },

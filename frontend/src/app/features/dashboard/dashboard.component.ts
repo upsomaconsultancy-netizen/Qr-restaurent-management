@@ -535,6 +535,14 @@ Chart.register(...registerables);
                   <option value="week">This Week</option>
                   <option value="month">This Month</option>
                 </select>
+                @if (isOwner() && outlets().length > 1) {
+                  <select class="fav-period-sel" [(ngModel)]="favOutletId" (change)="loadFavorites()">
+                    <option value="">All Outlets</option>
+                    @for (o of outlets(); track o._id) {
+                      <option [value]="o._id">{{ o.name }}</option>
+                    }
+                  </select>
+                }
                 <input class="fav-search" type="text" placeholder="Search item…" [(ngModel)]="favItemSearch" (input)="loadFavorites()">
                 <button class="btn-export" (click)="exportFavorites()">📥 Export Excel</button>
               </div>
@@ -1554,6 +1562,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   favLoading    = signal(false);
   favPeriod     = 'week';
   favItemSearch = '';
+  favOutletId   = '';
 
   // Customer profile modal
   customerProfile = signal<any | null>(null);
@@ -1768,8 +1777,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
   loadFavorites() {
     const params: any = { period: this.favPeriod, limit: 100 };
-    const oid = this.selectedOutletId();
-    if (oid) params['outletId'] = oid;
+    // OWNER: use favOutletId dropdown (empty = all outlets); MANAGER: backend auto-scopes to their outlet
+    if (this.isOwner() && this.favOutletId) params['outletId'] = this.favOutletId;
     if (this.favItemSearch.trim()) params['item'] = this.favItemSearch.trim();
     this.favLoading.set(true);
     this.api.get<any>('/tenant/analytics/customers/favorites', params).subscribe({
@@ -1835,6 +1844,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   exportFavorites() {
     const params: any = { period: this.favPeriod };
+    if (this.isOwner() && this.favOutletId) params['outletId'] = this.favOutletId;
     if (this.favItemSearch.trim()) params['item'] = this.favItemSearch.trim();
     this.api.get<any[]>('/tenant/analytics/customers/export', params).subscribe({
       next: ({ data }) => this.downloadExcel(data),
@@ -2107,6 +2117,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
   isManager() {
     const r = this.auth.user()?.role;
     return r === 'OWNER' || r === 'MANAGER';
+  }
+
+  isOwner() {
+    return this.auth.user()?.role === 'OWNER';
   }
 
   getTimeAgo(date: string) {
