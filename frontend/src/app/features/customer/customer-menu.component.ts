@@ -34,6 +34,30 @@ const CUSTOMER_TOKEN_PREFIX = 'ros_cust_token_';
           }
         </div>
       </div>
+    } @else if (tableFull()) {
+      <div class="cm-page cm-error-page">
+        <div class="cm-error-box cm-table-full-box">
+          <div class="cm-table-full-icon">
+            <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M12 2a10 10 0 1 0 0 20A10 10 0 0 0 12 2z"/>
+              <path d="M12 8v4m0 4h.01" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <h2 class="cm-error-title cm-table-full-title">Table Capacity Reached</h2>
+          <p class="cm-error-desc">
+            This table is currently full
+            ({{ tableFull()!.seatsOccupied }}/{{ tableFull()!.capacity }} seats occupied).
+          </p>
+          <p class="cm-error-desc cm-table-full-hint">
+            Please take another available seat and scan its QR code, or ask a waiter for help.
+          </p>
+          <div class="cm-table-full-capacity">
+            @for (i of capacityArr(tableFull()!.capacity); track i) {
+              <div class="cm-seat-dot" [class.cm-seat-taken]="i <= tableFull()!.seatsOccupied"></div>
+            }
+          </div>
+        </div>
+      </div>
     } @else if (!data()) {
       <div class="cm-page cm-error-page">
         <div class="cm-error-box">
@@ -523,6 +547,13 @@ const CUSTOMER_TOKEN_PREFIX = 'ros_cust_token_';
     .cm-error-icon { font-size:3rem; margin-bottom:1rem; }
     .cm-error-title { font-size:1.25rem; font-weight:700; color:var(--text); margin-bottom:.5rem; }
     .cm-error-desc { font-size:.875rem; color:var(--text-muted); line-height:1.5; }
+    .cm-table-full-box { border-color:rgba(239,68,68,.25); background:rgba(239,68,68,.04); }
+    .cm-table-full-icon { color:#ef4444; margin-bottom:1rem; }
+    .cm-table-full-title { color:#ef4444; }
+    .cm-table-full-hint { margin-top:.5rem; }
+    .cm-table-full-capacity { display:flex; gap:.5rem; justify-content:center; margin-top:1.25rem; flex-wrap:wrap; }
+    .cm-seat-dot { width:20px; height:20px; border-radius:50%; background:#e5e7eb; border:2px solid #d1d5db; }
+    .cm-seat-taken { background:#ef4444; border-color:#dc2626; }
 
     /* Loading skeleton */
     .sk { background:linear-gradient(90deg,#f0f0f0 25%,#e0e0e0 50%,#f0f0f0 75%); background-size:200% 100%; animation:shimmer 1.4s infinite; border-radius:.375rem; }
@@ -596,6 +627,7 @@ export class CustomerMenuComponent implements OnInit, OnChanges {
 
   loading              = signal(true);
   data                 = signal<any>(null);
+  tableFull            = signal<{ capacity: number; seatsOccupied: number } | null>(null);
   bill                 = signal<any>(null);
   receipt              = signal<any>(null);
   cart                 = signal<CartLine[]>([]);
@@ -613,6 +645,7 @@ export class CustomerMenuComponent implements OnInit, OnChanges {
   custMobile = '';
 
   isMobileValid() { return /^\d{10}$/.test(this.custMobile.trim()); }
+  capacityArr(n: number): number[] { return Array.from({ length: n }, (_, i) => i + 1); }
 
   hasTaxes(b: any): boolean {
     return Array.isArray(b?.taxes) && b.taxes.some((t: any) => (t.amount || 0) > 0);
@@ -646,10 +679,14 @@ export class CustomerMenuComponent implements OnInit, OnChanges {
     this.loading.set(true);
     this.api.get<any>(`/public/qr/${this.qrToken}`).subscribe({
       next: ({ data }) => {
+        if (data.tableFull) {
+          this.tableFull.set({ capacity: data.capacity, seatsOccupied: data.seatsOccupied });
+          this.loading.set(false);
+          return;
+        }
         this.data.set(data);
         this.loading.set(false);
         this.restoreCustomerSession(data.sessionToken);
-        // Listen on customer's own room — subscribed after we get customerToken
       },
       error: () => { this.data.set(null); this.loading.set(false); }
     });

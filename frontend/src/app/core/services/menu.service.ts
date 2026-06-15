@@ -36,11 +36,17 @@ export class MenuService {
   loading = signal(false);
   error = signal<string | null>(null);
 
-  // Get all menu items
-  getItems() {
+  // Set by dashboard when Owner switches outlet view; null = own menu
+  selectedOutletId = signal<string | null>(null);
+
+  // Get menu items — uses selectedOutletId if set (Owner viewing an outlet's menu)
+  getItems(outletId?: string | null) {
     this.loading.set(true);
     this.error.set(null);
-    return this.api.get<MenuItem[]>('/menu/items').subscribe({
+    const oid = outletId !== undefined ? outletId : this.selectedOutletId();
+    const params: any = {};
+    if (oid) params['outletId'] = oid;
+    return this.api.get<MenuItem[]>('/tenant/menu/items', params).subscribe({
       next: ({ data }) => {
         this.items.set(data);
         this.loading.set(false);
@@ -52,11 +58,14 @@ export class MenuService {
     });
   }
 
-  // Get all categories
-  getCategories() {
+  // Get categories — uses selectedOutletId if set
+  getCategories(outletId?: string | null) {
     this.loading.set(true);
     this.error.set(null);
-    return this.api.get<Category[]>('/menu/categories').subscribe({
+    const oid = outletId !== undefined ? outletId : this.selectedOutletId();
+    const params: any = {};
+    if (oid) params['outletId'] = oid;
+    return this.api.get<Category[]>('/tenant/menu/categories', params).subscribe({
       next: ({ data }) => {
         this.categories.set(data);
         this.loading.set(false);
@@ -89,7 +98,7 @@ export class MenuService {
       formData.append('image', imageFile);
     }
 
-    return this.api.post<MenuItem>('/menu/items', formData).subscribe({
+    return this.api.post<MenuItem>('/tenant/menu/items', formData).subscribe({
       next: ({ data }) => {
         this.items.set([...this.items(), data]);
         this.loading.set(false);
@@ -122,7 +131,7 @@ export class MenuService {
       formData.append('image', imageFile);
     }
 
-    return this.api.patch<MenuItem>(`/menu/items/${itemId}`, formData).subscribe({
+    return this.api.patch<MenuItem>(`/tenant/menu/items/${itemId}`, formData).subscribe({
       next: ({ data }) => {
         const items = this.items();
         const idx = items.findIndex(i => i._id === itemId);
@@ -144,7 +153,7 @@ export class MenuService {
     this.loading.set(true);
     this.error.set(null);
 
-    return this.api.delete<any>(`/menu/items/${itemId}`).subscribe({
+    return this.api.delete<any>(`/tenant/menu/items/${itemId}`).subscribe({
       next: () => {
         this.items.set(this.items().filter(i => i._id !== itemId));
         this.loading.set(false);
@@ -159,7 +168,7 @@ export class MenuService {
   toggleItemAvailability(itemId: string, isAvailable: boolean) {
     this.loading.set(true);
     this.error.set(null);
-    return this.api.patch<MenuItem>(`/menu/items/${itemId}`, { isAvailable }).subscribe({
+    return this.api.patch<MenuItem>(`/tenant/menu/items/${itemId}`, { isAvailable }).subscribe({
       next: ({ data }) => {
         const items = this.items();
         const idx = items.findIndex(i => i._id === itemId);
@@ -181,7 +190,7 @@ export class MenuService {
     this.loading.set(true);
     this.error.set(null);
 
-    return this.api.post<Category>('/menu/categories', category).subscribe({
+    return this.api.post<Category>('/tenant/menu/categories', category).subscribe({
       next: ({ data }) => {
         this.categories.set([...this.categories(), data]);
         this.loading.set(false);
@@ -197,7 +206,7 @@ export class MenuService {
     this.loading.set(true);
     this.error.set(null);
 
-    return this.api.delete<any>(`/menu/categories/${categoryId}`).subscribe({
+    return this.api.delete<any>(`/tenant/menu/categories/${categoryId}`).subscribe({
       next: () => {
         this.categories.set(this.categories().filter((c) => c._id !== categoryId));
         this.loading.set(false);

@@ -7,6 +7,7 @@ export interface SessionUser {
   id: string; name: string; email: string;
   role: 'SUPER_ADMIN' | 'OWNER' | 'MANAGER' | 'WAITER' | 'KITCHEN';
   restaurantId: string | null;
+  outletId: string | null;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -35,6 +36,23 @@ export class AuthService {
     this.token.set(null);
     this.user.set(null);
     this.router.navigateByUrl('/login');
+  }
+
+  /** Force logout with a message shown on the login screen (outlet deactivated etc.) */
+  logoutWithMessage(message: string) {
+    this.api.post('/auth/logout', {}).subscribe();
+    sessionStorage.clear();
+    sessionStorage.setItem('ros_logout_msg', message);
+    this.token.set(null);
+    this.user.set(null);
+    this.router.navigateByUrl('/login');
+  }
+
+  /** Consume and return the pending logout message (called once by login page). */
+  consumeLogoutMessage(): string | null {
+    const msg = sessionStorage.getItem('ros_logout_msg');
+    if (msg) sessionStorage.removeItem('ros_logout_msg');
+    return msg;
   }
 
   homeFor(role: SessionUser['role']): string {

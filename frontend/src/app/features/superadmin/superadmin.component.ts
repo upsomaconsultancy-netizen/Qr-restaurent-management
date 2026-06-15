@@ -19,6 +19,8 @@ const BLANK_EDIT = () => ({
 
 const BLANK_USER = () => ({ name: '', email: '', password: '', role: 'MANAGER' });
 
+const BLANK_OUTLET = () => ({ name: '', address: '', phone: '', email: '' });
+
 @Component({
   standalone: true,
   imports: [CommonModule, FormsModule],
@@ -122,6 +124,31 @@ const BLANK_USER = () => ({ name: '', email: '', password: '', role: 'MANAGER' }
               <div class="sa-stat-lbl">Paid Orders</div>
             </div>
           </div>
+          <div class="sa-stat-card">
+            <div class="sa-stat-icon sa-icon-teal">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 9h18v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/>
+                <path d="M3 9V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v3"/>
+                <line x1="12" y1="4" x2="12" y2="9"/>
+              </svg>
+            </div>
+            <div>
+              <div class="sa-stat-val">{{ s.totalOutlets || 0 }}</div>
+              <div class="sa-stat-lbl">Total Outlets</div>
+            </div>
+          </div>
+          <div class="sa-stat-card">
+            <div class="sa-stat-icon sa-icon-green">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 8 12 12 15 15"/>
+              </svg>
+            </div>
+            <div>
+              <div class="sa-stat-val">{{ s.activeOutlets || 0 }}</div>
+              <div class="sa-stat-lbl">Active Outlets</div>
+            </div>
+          </div>
         </div>
       }
 
@@ -184,6 +211,13 @@ const BLANK_USER = () => ({ name: '', email: '', password: '', role: 'MANAGER' }
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                         <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                      </svg>
+                    </button>
+                    <button class="sa-icon-btn sa-icon-btn-teal" title="Manage outlets" (click)="openOutlets(r)">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 9h18v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/>
+                        <path d="M3 9V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v3"/>
+                        <line x1="12" y1="4" x2="12" y2="9"/>
                       </svg>
                     </button>
                     <button class="sa-icon-btn sa-icon-btn-purple" title="Manage users" (click)="openUsers(r)">
@@ -403,6 +437,119 @@ const BLANK_USER = () => ({ name: '', email: '', password: '', role: 'MANAGER' }
     </div>
   }
 
+  <!-- ═══ Manage Outlets Modal ═══ -->
+  @if (outletsModal()) {
+    <div class="sa-overlay" (click)="closeOutlets()">
+      <div class="sa-modal sa-modal-lg" (click)="$event.stopPropagation()">
+        <div class="sa-modal-header">
+          <div>
+            <h3 class="sa-modal-title">Manage Outlets</h3>
+            <p class="sa-modal-sub">{{ outletsTarget()?.name }} — branches and locations</p>
+          </div>
+          <button class="sa-modal-close" (click)="closeOutlets()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+        <div class="sa-modal-body">
+
+          <!-- Outlet list -->
+          <div class="sa-outlet-list">
+            @for (o of restaurantOutlets(); track o._id) {
+              <div class="sa-outlet-row">
+                <div class="sa-outlet-icon">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 9h18v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/>
+                    <path d="M3 9V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v3"/>
+                  </svg>
+                </div>
+                <div class="sa-outlet-info">
+                  <div class="sa-outlet-name">{{ o.name }}</div>
+                  <div class="sa-outlet-addr">{{ o.address }}</div>
+                  @if (o.phone) { <div class="sa-outlet-meta">{{ o.phone }}</div> }
+                </div>
+                <span class="sa-status-badge" [class.active]="o.status==='ACTIVE'" [class.suspended]="o.status!=='ACTIVE'">
+                  {{ o.status }}
+                </span>
+                <div class="sa-actions-row">
+                  <button class="sa-icon-btn sa-icon-btn-blue" title="Edit outlet" (click)="openEditOutlet(o)">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                    </svg>
+                  </button>
+                  <button class="sa-icon-btn" [class.sa-icon-btn-amber]="o.status==='ACTIVE'" [class.sa-icon-btn-green]="o.status!=='ACTIVE'"
+                    [title]="o.status==='ACTIVE' ? 'Deactivate' : 'Activate'" (click)="toggleOutlet(o)">
+                    @if (o.status === 'ACTIVE') {
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+                      </svg>
+                    } @else {
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                        <polyline points="22 4 12 14.01 9 11.01"/>
+                      </svg>
+                    }
+                  </button>
+                  <button class="sa-icon-btn sa-icon-btn-danger" title="Delete outlet" (click)="deleteOutlet(o)">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                      <path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            } @empty {
+              <div class="sa-empty-row">No outlets yet for this restaurant.</div>
+            }
+          </div>
+
+          <!-- Add / Edit outlet form -->
+          <div class="sa-form-section-lbl" style="margin-top:1.25rem">
+            {{ editingOutlet() ? 'Edit Outlet' : 'Add New Outlet' }}
+          </div>
+          <div class="sa-form-grid">
+            <div class="sa-field">
+              <label class="sa-label">Outlet Name *</label>
+              <input class="sa-input" placeholder="e.g. Connaught Place Branch" [(ngModel)]="outletForm.name">
+            </div>
+            <div class="sa-field sa-field-full">
+              <label class="sa-label">Address *</label>
+              <input class="sa-input" placeholder="Full address" [(ngModel)]="outletForm.address">
+            </div>
+            <div class="sa-field">
+              <label class="sa-label">Phone</label>
+              <input class="sa-input" placeholder="+91 98765 43210" [(ngModel)]="outletForm.phone">
+            </div>
+            <div class="sa-field">
+              <label class="sa-label">Email</label>
+              <input class="sa-input" type="email" placeholder="outlet@restaurant.com" [(ngModel)]="outletForm.email">
+            </div>
+          </div>
+          @if (outletsMsg()) {
+            <div class="sa-alert" [class.sa-alert-error]="outletsMsgType()==='error'" [class.sa-alert-success]="outletsMsgType()==='success'">
+              {{ outletsMsg() }}
+            </div>
+          }
+        </div>
+        <div class="sa-modal-footer">
+          @if (editingOutlet()) {
+            <button class="sa-btn-ghost" (click)="cancelEditOutlet()">Cancel</button>
+            <button class="sa-btn-primary" (click)="saveOutlet()" [disabled]="savingOutlet()">
+              {{ savingOutlet() ? 'Saving...' : 'Update Outlet' }}
+            </button>
+          } @else {
+            <button class="sa-btn-ghost" (click)="closeOutlets()">Close</button>
+            <button class="sa-btn-primary" (click)="saveOutlet()" [disabled]="savingOutlet()">
+              {{ savingOutlet() ? 'Adding...' : 'Add Outlet' }}
+            </button>
+          }
+        </div>
+      </div>
+    </div>
+  }
+
   <!-- ═══ Manage Users Modal ═══ -->
   @if (usersModal()) {
     <div class="sa-overlay" (click)="closeUsers()">
@@ -577,6 +724,24 @@ const BLANK_USER = () => ({ name: '', email: '', password: '', role: 'MANAGER' }
     .sa-icon-purple { background: #f5f3ff; color: #7c3aed; }
     .sa-icon-amber  { background: #fffbeb; color: #d97706; }
     .sa-icon-rose   { background: #fff1f2; color: #e11d48; }
+    .sa-icon-teal   { background: #ecfeff; color: #0891b2; }
+
+    /* ── Outlet list ── */
+    .sa-outlet-list { display: flex; flex-direction: column; gap: .5rem; }
+    .sa-outlet-row {
+      display: flex; align-items: center; gap: .75rem;
+      padding: .625rem .875rem; border: 1px solid var(--c-border);
+      border-radius: var(--radius-sm); background: #fafafa;
+    }
+    .sa-outlet-icon {
+      width: 32px; height: 32px; border-radius: 8px; flex-shrink: 0;
+      background: #ecfeff; color: #0891b2;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .sa-outlet-info { flex: 1; min-width: 0; }
+    .sa-outlet-name { font-weight: 600; font-size: .82rem; }
+    .sa-outlet-addr { font-size: .72rem; color: var(--c-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sa-outlet-meta { font-size: .72rem; color: var(--c-muted); }
     .sa-stat-val { font-size: 1.25rem; font-weight: 700; color: var(--c-text); }
     .sa-stat-lbl { font-size: .72rem; color: var(--c-muted); margin-top: .1rem; }
 
@@ -638,6 +803,8 @@ const BLANK_USER = () => ({ name: '', email: '', password: '', role: 'MANAGER' }
     .sa-icon-btn-purple { color: #7c3aed; }
     .sa-icon-btn-amber  { color: #d97706; }
     .sa-icon-btn-green  { color: #16a34a; }
+    .sa-icon-btn-teal   { color: #0891b2; }
+    .sa-icon-btn-danger { color: #dc2626; }
     .sa-empty-row { text-align: center; padding: 2rem; color: var(--c-muted); }
 
     /* ── Form Card ── */
@@ -790,6 +957,15 @@ export class SuperadminComponent implements OnInit {
   editMsgType = signal<'success'|'error'>('success');
   saving      = signal(false);
 
+  outletsModal      = signal(false);
+  outletsTarget     = signal<any>(null);
+  restaurantOutlets = signal<any[]>([]);
+  outletsMsg        = signal('');
+  outletsMsgType    = signal<'success'|'error'>('success');
+  savingOutlet      = signal(false);
+  editingOutlet     = signal<any>(null);
+  outletForm: any   = BLANK_OUTLET();
+
   usersModal      = signal(false);
   usersTarget     = signal<any>(null);
   restaurantUsers = signal<any[]>([]);
@@ -871,6 +1047,92 @@ export class SuperadminComponent implements OnInit {
         this.editMsgType.set('error');
         this.saving.set(false);
       }
+    });
+  }
+
+  /* ── Manage outlets ── */
+  openOutlets(r: any) {
+    this.outletsTarget.set(r);
+    this.outletsMsg.set('');
+    this.outletForm = BLANK_OUTLET();
+    this.editingOutlet.set(null);
+    this.loadOutlets(r._id);
+    this.outletsModal.set(true);
+  }
+
+  closeOutlets() { this.outletsModal.set(false); }
+
+  loadOutlets(id: string) {
+    this.api.get<any[]>(`/admin/restaurants/${id}/outlets`).subscribe(({ data }) => this.restaurantOutlets.set(data));
+  }
+
+  openEditOutlet(o: any) {
+    this.editingOutlet.set(o);
+    this.outletForm = { name: o.name, address: o.address, phone: o.phone || '', email: o.email || '' };
+    this.outletsMsg.set('');
+  }
+
+  cancelEditOutlet() {
+    this.editingOutlet.set(null);
+    this.outletForm = BLANK_OUTLET();
+    this.outletsMsg.set('');
+  }
+
+  saveOutlet() {
+    const rid = this.outletsTarget()?._id;
+    this.savingOutlet.set(true);
+    this.outletsMsg.set('');
+    if (this.editingOutlet()) {
+      const oid = this.editingOutlet()._id;
+      this.api.patch(`/admin/restaurants/${rid}/outlets/${oid}`, this.outletForm).subscribe({
+        next: () => {
+          this.outletsMsg.set('Outlet updated!');
+          this.outletsMsgType.set('success');
+          this.savingOutlet.set(false);
+          this.editingOutlet.set(null);
+          this.outletForm = BLANK_OUTLET();
+          this.loadOutlets(rid);
+        },
+        error: (e: any) => {
+          this.outletsMsg.set(e?.error?.message || 'Update failed');
+          this.outletsMsgType.set('error');
+          this.savingOutlet.set(false);
+        }
+      });
+    } else {
+      this.api.post(`/admin/restaurants/${rid}/outlets`, this.outletForm).subscribe({
+        next: () => {
+          this.outletsMsg.set('Outlet added!');
+          this.outletsMsgType.set('success');
+          this.savingOutlet.set(false);
+          this.outletForm = BLANK_OUTLET();
+          this.loadOutlets(rid);
+          this.load();
+        },
+        error: (e: any) => {
+          this.outletsMsg.set(e?.error?.message || 'Failed to add outlet');
+          this.outletsMsgType.set('error');
+          this.savingOutlet.set(false);
+        }
+      });
+    }
+  }
+
+  toggleOutlet(o: any) {
+    const rid = this.outletsTarget()?._id;
+    const newStatus = o.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+    this.api.patch(`/admin/restaurants/${rid}/outlets/${o._id}/status`, { status: newStatus }).subscribe({
+      next: () => this.loadOutlets(rid),
+      error: (e: any) => { this.outletsMsg.set(e?.error?.message || 'Failed'); this.outletsMsgType.set('error'); }
+    });
+  }
+
+  deleteOutlet(o: any) {
+    if (!confirm(`Delete outlet "${o.name}"? This cannot be undone.`)) return;
+    const rid = this.outletsTarget()?._id;
+    this.api.delete(`/admin/restaurants/${rid}/outlets/${o._id}`).subscribe({
+      next: () => { this.loadOutlets(rid); this.load(); },
+      error: (e: any) => { this.outletsMsg.set(e?.error?.message || 'Delete failed'); this.outletsMsgType.set('error'); }
     });
   }
 

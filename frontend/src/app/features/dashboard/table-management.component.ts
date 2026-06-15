@@ -2,6 +2,7 @@ import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/services/api.service';
+import { AuthService } from '../../core/services/auth.service';
 import { QrService } from '../../core/services/qr.service';
 import { QrDisplayComponent } from './qr-display.component';
 
@@ -12,6 +13,13 @@ interface Table {
   qrUrl?: string;
   capacity: number;
   isActive: boolean;
+  outletId?: string;
+}
+
+interface Outlet {
+  _id: string;
+  name: string;
+  tableLimit: number;
 }
 
 @Component({
@@ -28,26 +36,59 @@ interface Table {
     @if (showAddForm()) {
       <div class="ros-card p-3 mb-3">
         <div class="row g-2 mb-2">
+
+          <!-- Outlet selector:
+               OWNER: dropdown when multiple outlets, label when single
+               MANAGER/WAITER/KITCHEN: always auto-selected (no dropdown, just a label) -->
+          @if (isOwner()) {
+            @if (outlets().length > 1) {
+              <div class="col-12">
+                <label class="form-label form-label-sm fw-semibold">Outlet *</label>
+                <select class="form-select form-select-sm" [(ngModel)]="newTable.outletId">
+                  <option value="">-- Select Outlet --</option>
+                  @for (o of outlets(); track o._id) {
+                    <option [value]="o._id">
+                      {{ o.name }}{{ o.tableLimit > 0 ? ' (limit: ' + o.tableLimit + ')' : '' }}
+                    </option>
+                  }
+                </select>
+              </div>
+            } @else if (outlets().length === 1) {
+              <div class="col-12">
+                <small class="text-muted">Outlet: <strong>{{ outlets()[0].name }}</strong></small>
+              </div>
+            }
+          } @else {
+            <!-- MANAGER / WAITER / KITCHEN: show their outlet name, no choice -->
+            @if (outlets().length > 0) {
+              <div class="col-12">
+                <small class="text-muted">Outlet: <strong>{{ outlets()[0].name }}</strong></small>
+              </div>
+            }
+          }
+
           <div class="col-md-6">
-            <input 
-              type="number" 
-              class="form-control form-control-sm" 
-              [(ngModel)]="newTable.number" 
-              placeholder="Table number"
+            <label class="form-label form-label-sm fw-semibold">Table Number *</label>
+            <input
+              type="number"
+              class="form-control form-control-sm"
+              [(ngModel)]="newTable.number"
+              placeholder="e.g. 1"
             />
           </div>
           <div class="col-md-6">
-            <input 
-              type="number" 
-              class="form-control form-control-sm" 
-              [(ngModel)]="newTable.capacity" 
-              placeholder="Capacity"
+            <label class="form-label form-label-sm fw-semibold">Capacity *</label>
+            <input
+              type="number"
+              class="form-control form-control-sm"
+              [(ngModel)]="newTable.capacity"
+              placeholder="e.g. 4"
             />
           </div>
         </div>
         <div class="d-flex gap-2">
           <button class="btn btn-sm btn-success" (click)="addTable()" [disabled]="loading()">
-            {{ loading() ? 'Creating...' : 'Create' }}
+            {{ loading() ? 'Creating...' : 'Create Table' }}
           </button>
           <button class="btn btn-sm btn-secondary" (click)="toggleAddForm()">Cancel</button>
         </div>
@@ -75,11 +116,16 @@ interface Table {
                 <div>
                   <h6 class="mb-0">Table #{{ table.number }}</h6>
                   <small class="text-muted">Capacity: {{ table.capacity }}</small>
+                  @if (outlets().length > 1 && table.outletId) {
+                    <div style="font-size:11px;color:#6366f1;font-weight:600;margin-top:2px;">
+                      {{ outletName(table.outletId) }}
+                    </div>
+                  }
                 </div>
                 <div class="form-check form-switch">
-                  <input 
-                    class="form-check-input" 
-                    type="checkbox" 
+                  <input
+                    class="form-check-input"
+                    type="checkbox"
                     [checked]="table.isActive"
                     (change)="toggleTable(table)"
                     [id]="'toggle-' + table._id"
@@ -91,10 +137,10 @@ interface Table {
               </div>
 
               <!-- QR Code -->
-              <app-qr-display 
+              <app-qr-display
                 [qrToken]="table.qrCode"
                 [tableNumber]="table.number"
-                [title]="'Spice Garden'"
+                [title]="outletName(table.outletId) || 'Restaurant'"
               ></app-qr-display>
 
               <div class="mt-3">
@@ -108,8 +154,8 @@ interface Table {
 
               <!-- Delete Button -->
               <div class="mt-3">
-                <button 
-                  class="btn btn-sm btn-outline-danger w-100" 
+                <button
+                  class="btn btn-sm btn-outline-danger w-100"
                   (click)="deleteTable(table._id)"
                   [disabled]="loading()"
                 >
@@ -124,24 +170,58 @@ interface Table {
   `
 })
 export class TableManagementComponent implements OnInit {
-  private api = inject(ApiService);
-  private qr = inject(QrService);
+  private api  = inject(ApiService);
+  private auth = inject(AuthService);
+  private qr   = inject(QrService);
 
-  tables = signal<Table[]>([]);
-  loading = signal(false);
-  error = signal<string | null>(null);
+  tables      = signal<Table[]>([]);
+  outlets     = signal<Outlet[]>([]);
+  loading     = signal(false);
+  error       = signal<string | null>(null);
   showAddForm = signal(false);
 
-  newTable: any = { number: 0, capacity: 4 };
+  newTable: any = { outletId: '', number: 0, capacity: 4 };
+
+  isOwner(): boolean { return this.auth.user()?.role === 'OWNER'; }
+  isManager(): boolean { return this.auth.user()?.role === 'MANAGER'; }
+  canManageOutlets(): boolean { return this.isOwner() || this.isManager(); }
 
   ngOnInit() {
+    this.loadOutlets();
     this.loadTables();
+  }
+
+  loadOutlets() {
+    // WAITER/KITCHEN are not permitted to call /tenant/outlets.
+    // Their outlet context comes from their JWT — synthesize a single-entry list.
+    if (!this.canManageOutlets()) {
+      const user = this.auth.user();
+      if (user?.outletId) {
+        const synthetic: Outlet = { _id: user.outletId, name: 'My Outlet', tableLimit: 0 };
+        this.outlets.set([synthetic]);
+        this.newTable.outletId = user.outletId;
+      }
+      return;
+    }
+
+    this.api.get<Outlet[]>('/tenant/outlets').subscribe({
+      next: ({ data }) => {
+        this.outlets.set(data);
+        // MANAGER: auto-select their own outlet; OWNER: auto-select only when single outlet
+        if (this.isManager() && data.length > 0) {
+          this.newTable.outletId = data[0]._id;
+        } else if (data.length === 1) {
+          this.newTable.outletId = data[0]._id;
+        }
+      },
+      error: () => {}
+    });
   }
 
   loadTables() {
     this.loading.set(true);
     this.error.set(null);
-    this.api.get<Table[]>('/tables').subscribe({
+    this.api.get<Table[]>('/tenant/tables').subscribe({
       next: ({ data }) => {
         this.tables.set(data);
         this.loading.set(false);
@@ -154,32 +234,38 @@ export class TableManagementComponent implements OnInit {
   }
 
   toggleAddForm() {
-    this.showAddForm.set(!this.showAddForm());
-    if (!this.showAddForm()) {
-      this.newTable = { number: 0, capacity: 4 };
-    }
+    const opening = !this.showAddForm();
+    this.showAddForm.set(opening);
+    // Reset form both when opening and closing
+    const outlets = this.outlets();
+    const defaultOutlet = (!this.isOwner() && outlets.length > 0)
+      ? outlets[0]._id
+      : (outlets.length === 1 ? outlets[0]._id : '');
+    this.newTable = { outletId: defaultOutlet, number: 0, capacity: 4 };
+    this.error.set(null);
   }
 
   addTable() {
-    if (!this.newTable.number || !this.newTable.capacity) {
-      this.error.set('Please fill all fields');
-      return;
-    }
+    if (!this.newTable.outletId) { this.error.set('Please select an outlet'); return; }
+    if (!this.newTable.number)   { this.error.set('Table number is required'); return; }
+    if (!this.newTable.capacity) { this.error.set('Capacity is required'); return; }
 
     this.loading.set(true);
-    this.api.post<Table>('/tables', {
-      number: this.newTable.number,
-      capacity: this.newTable.capacity,
-      isActive: true
+    this.error.set(null);
+    this.api.post<Table>('/tenant/tables', {
+      outletId:  this.newTable.outletId,
+      number:    this.newTable.number,
+      capacity:  this.newTable.capacity,
+      isActive:  true
     }).subscribe({
       next: ({ data }) => {
         this.tables.set([...this.tables(), data]);
-        this.newTable = { number: 0, capacity: 4 };
+        this.newTable = { outletId: this.newTable.outletId, number: 0, capacity: 4 };
         this.showAddForm.set(false);
         this.loading.set(false);
       },
       error: (err) => {
-        this.error.set(err.message);
+        this.error.set(err?.error?.message || err.message || 'Failed to create table');
         this.loading.set(false);
       }
     });
@@ -187,14 +273,11 @@ export class TableManagementComponent implements OnInit {
 
   toggleTable(table: Table) {
     this.loading.set(true);
-    this.api.patch<Table>(`/tables/${table._id}/toggle`, {}).subscribe({
+    this.api.patch<Table>(`/tenant/tables/${table._id}/toggle`, {}).subscribe({
       next: ({ data }) => {
         const tables = this.tables();
         const idx = tables.findIndex(t => t._id === table._id);
-        if (idx >= 0) {
-          tables[idx] = data;
-          this.tables.set([...tables]);
-        }
+        if (idx >= 0) { tables[idx] = data; this.tables.set([...tables]); }
         this.loading.set(false);
       },
       error: (err) => {
@@ -207,7 +290,7 @@ export class TableManagementComponent implements OnInit {
   deleteTable(tableId: string) {
     if (confirm('Delete this table?')) {
       this.loading.set(true);
-      this.api.delete<any>(`/tables/${tableId}`).subscribe({
+      this.api.delete<any>(`/tenant/tables/${tableId}`).subscribe({
         next: () => {
           this.tables.set(this.tables().filter(t => t._id !== tableId));
           this.loading.set(false);
@@ -218,6 +301,11 @@ export class TableManagementComponent implements OnInit {
         }
       });
     }
+  }
+
+  outletName(outletId: string | undefined): string {
+    if (!outletId) return '';
+    return this.outlets().find(o => o._id === outletId)?.name || '';
   }
 
   getQrUrl(qrCode: string): string {

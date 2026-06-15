@@ -230,7 +230,7 @@ import { MenuFormComponent } from './menu-form.component';
                   <button class="btn btn-sm btn-outline-secondary me-1" (click)="toggleAvailability(item)" [disabled]="menu.loading()">
                     {{ item.isAvailable !== false ? 'Hide' : 'Show' }}
                   </button>
-                  @if (auth.user()?.role === 'OWNER') {
+                  @if (auth.user()?.role === 'OWNER' || auth.user()?.role === 'MANAGER') {
                     <button class="btn btn-sm btn-outline-danger" (click)="deleteItem(item._id!)" [disabled]="menu.loading()">Delete</button>
                   }
                 </td>

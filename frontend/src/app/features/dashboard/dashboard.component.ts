@@ -4,6 +4,8 @@ import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/services/api.service';
 import { SocketService } from '../../core/services/socket.service';
 import { AuthService } from '../../core/services/auth.service';
+import { OutletService, Outlet } from '../../core/services/outlet.service';
+import { MenuService } from '../../core/services/menu.service';
 import { MenuListComponent } from './menu-list.component';
 import { CategoryManagerComponent } from './category-manager.component';
 import { TableManagementComponent } from './table-management.component';
@@ -98,7 +100,50 @@ Chart.register(...registerables);
           <button *ngIf="isManager()" class="nav-tab" [class.active]="activeTab() === 'favorites'" (click)="activeTab.set('favorites'); loadFavorites()">
             ⭐ Favorites
           </button>
+          <button *ngIf="auth.user()?.role === 'OWNER'" class="nav-tab" [class.active]="activeTab() === 'outlets'" (click)="activeTab.set('outlets'); loadOutlets()">
+            🏪 Outlets
+          </button>
+
+          <!-- Outlet selector (OWNER/MANAGER) -->
+          <div *ngIf="isManager() && outlets().length > 0" class="outlet-selector-wrap" style="margin-left:auto;display:flex;align-items:center;gap:8px;">
+            <label style="font-size:12px;color:#6b7280;white-space:nowrap;">Viewing:</label>
+            <select class="outlet-select" (change)="selectOutlet($any($event.target).value || null)" style="font-size:13px;padding:4px 10px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;cursor:pointer;">
+              <option value="">All Outlets</option>
+              @for (o of outlets(); track o._id) {
+                <option [value]="o._id" [selected]="selectedOutletId() === o._id">{{ o.name }}</option>
+              }
+            </select>
+          </div>
+
+          <!-- Waiter notification bell -->
+          <button *ngIf="auth.user()?.role === 'WAITER'" class="nav-tab notif-bell" (click)="showNotifications.set(!showNotifications())" style="position:relative;margin-left:auto;">
+            🔔
+            <span *ngIf="pendingServiceOrders().length > 0" class="nav-pill">{{ pendingServiceOrders().length }}</span>
+          </button>
         </div>
+
+        <!-- Waiter notification panel -->
+        @if (showNotifications() && pendingServiceOrders().length > 0) {
+          <div class="notif-panel" style="position:fixed;top:110px;right:20px;width:340px;background:#fff;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.15);z-index:1000;padding:16px;max-height:480px;overflow-y:auto;">
+            <div style="font-weight:700;font-size:14px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
+              Orders Ready to Serve
+              <button (click)="showNotifications.set(false)" style="background:none;border:none;cursor:pointer;font-size:18px;color:#9ca3af;">×</button>
+            </div>
+            @for (n of pendingServiceOrders(); track n.orderId) {
+              <div style="background:#f9fafb;border-radius:8px;padding:12px;margin-bottom:8px;border-left:4px solid #10b981;">
+                <div style="font-weight:600;font-size:13px;">Order #{{ n.orderNumber }} — {{ n.tableName }}</div>
+                <div style="font-size:12px;color:#6b7280;margin:4px 0;">{{ n.outletName }}</div>
+                <div style="font-size:12px;color:#374151;margin-bottom:8px;">
+                  @for (item of n.items; track $index) {<span>{{ item.name }} ×{{ item.qty }}</span>@if (!$last) {<span>, </span>}}
+                </div>
+                <div style="display:flex;gap:8px;">
+                  <button (click)="markServed(n)" style="flex:1;background:#10b981;color:#fff;border:none;border-radius:6px;padding:6px;font-size:12px;cursor:pointer;font-weight:600;">✓ Mark Served</button>
+                  <button (click)="dismissNotification(n.orderId)" style="background:#f3f4f6;border:none;border-radius:6px;padding:6px 10px;font-size:12px;cursor:pointer;">Dismiss</button>
+                </div>
+              </div>
+            }
+          </div>
+        }
       </nav>
 
       <!-- ── Main ── -->
@@ -109,6 +154,30 @@ Chart.register(...registerables);
           <div class="orders-view">
 
             @if (isManager()) {
+              <!-- Analytics outlet selector for OWNER -->
+              @if (auth.user()?.role === 'OWNER' && outlets().length > 1) {
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+                  <span style="font-size:12px;color:#6b7280;font-weight:500;">Analytics for:</span>
+                  <select
+                    style="font-size:13px;padding:5px 14px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;cursor:pointer;font-weight:500;"
+                    (change)="selectOutlet($any($event.target).value || null)">
+                    <option value="">All Outlets (Combined)</option>
+                    @for (o of outlets(); track o._id) {
+                      <option [value]="o._id" [selected]="selectedOutletId() === o._id">{{ o.name }}</option>
+                    }
+                  </select>
+                  @if (selectedOutletId()) {
+                    <span style="font-size:11px;color:#6366f1;font-weight:600;background:#eef2ff;padding:3px 10px;border-radius:20px;">
+                      Showing: {{ getOutletName(selectedOutletId()!) }}
+                    </span>
+                  } @else {
+                    <span style="font-size:11px;color:#10b981;font-weight:600;background:#d1fae5;padding:3px 10px;border-radius:20px;">
+                      Showing: All Outlets Combined
+                    </span>
+                  }
+                </div>
+              }
+
               <!-- KPI Row -->
               <div class="kpi-row">
                 <div class="kpi-card" style="--accent:#6366f1;--accent-bg:#eef2ff">
@@ -281,13 +350,25 @@ Chart.register(...registerables);
                   <div class="orders-title">Live Orders</div>
                   <div class="orders-sub">Real-time updates · auto-refreshes every 30s</div>
                 </div>
-                <button class="btn-refresh" (click)="loadOrders()">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M23 4v6h-6M1 20v-6h6"/>
-                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-                  </svg>
-                  Refresh
-                </button>
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                  <!-- Outlet filter dropdown for OWNER -->
+                  @if (auth.user()?.role === 'OWNER' && outlets().length > 0) {
+                    <select
+                      style="font-size:13px;padding:5px 12px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;cursor:pointer;font-weight:500;"
+                      (change)="selectOutlet($any($event.target).value || null)">
+                      @for (o of outlets(); track o._id) {
+                        <option [value]="o._id" [selected]="selectedOutletId() === o._id">{{ o.name }}</option>
+                      }
+                    </select>
+                  }
+                  <button class="btn-refresh" (click)="loadOrders()">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M23 4v6h-6M1 20v-6h6"/>
+                      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+                    </svg>
+                    Refresh
+                  </button>
+                </div>
               </div>
 
               @if (error()) {
@@ -316,6 +397,7 @@ Chart.register(...registerables);
                       <tr>
                         <th>Order #</th>
                         <th>Table</th>
+                        @if (auth.user()?.role === 'OWNER') { <th>Outlet</th> }
                         <th class="col-cust">Customer</th>
                         <th class="col-items">Items</th>
                         <th>Total</th>
@@ -330,6 +412,9 @@ Chart.register(...registerables);
                         <tr>
                           <td><span class="order-num">#{{ order.orderNumber }}</span></td>
                           <td><span class="table-num">T{{ order.tableId?.number || '—' }}</span></td>
+                          @if (auth.user()?.role === 'OWNER') {
+                            <td><span style="font-size:11px;font-weight:600;color:#6366f1;">{{ getOutletName(order.outletId) }}</span></td>
+                          }
                           <td class="col-cust">
                             @if (order.customerSessionId?.customerName || order.customerName) {
                               <div class="cust-cell">
@@ -370,12 +455,18 @@ Chart.register(...registerables);
                               <button class="btn-action btn-hist" (click)="viewHistory(order)" title="Order history">
                                 📋
                               </button>
-                              @if (order.paymentStatus === 'UNPAID' && (order.status === 'SERVED' || order.status === 'COMPLETED')) {
+                              @if (order.status === 'READY_TO_SERVE') {
+                                <button class="btn-action" (click)="markOrderServed(order)"
+                                  style="background:#10b981;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer;font-weight:600;white-space:nowrap;">
+                                  🍽️ <span class="pay-label">Serve</span>
+                                </button>
+                              }
+                              @if (order.paymentStatus === 'UNPAID' && (order.status === 'READY_TO_SERVE' || order.status === 'SERVED' || order.status === 'PAYMENT_COMPLETED' || order.status === 'COMPLETED')) {
                                 <button class="btn-pay btn-action" (click)="openPayModal(order)">
                                   💰 <span class="pay-label">Pay</span>
                                 </button>
                               }
-                              @if (order.status === 'SERVED' || order.status === 'COMPLETED') {
+                              @if (order.paymentStatus === 'PAID' || order.status === 'SERVED' || order.status === 'PAYMENT_COMPLETED' || order.status === 'COMPLETED' || order.status === 'CLOSED') {
                                 <button class="btn-pay btn-receipt btn-action" (click)="viewReceipt(order)">
                                   🧾 <span class="pay-label">Receipt</span>
                                 </button>
@@ -617,6 +708,171 @@ Chart.register(...registerables);
               <div class="modal-foot">
                 <button class="modal-btn-sec" (click)="closeCustomerProfile()">Close</button>
               </div>
+            </div>
+          </div>
+        }
+
+        <!-- ════════ OUTLETS TAB ════════ -->
+        @if (activeTab() === 'outlets') {
+          <div style="padding:1.5rem;display:flex;flex-direction:column;gap:1.25rem;">
+            <!-- Header -->
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <div>
+                <h4 style="margin:0;font-size:1.1rem;font-weight:700;">Outlet Management</h4>
+                <p style="margin:4px 0 0;color:#6b7280;font-size:13px;">Manage your restaurant branches</p>
+              </div>
+              <button (click)="openOutletForm(null)" style="background:#4f46e5;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:13px;cursor:pointer;font-weight:600;">+ Add Outlet</button>
+            </div>
+
+            <!-- Consolidated stats -->
+            @if (consolidatedData()) {
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;">
+                <div style="background:#f0f9ff;border-radius:10px;padding:16px;">
+                  <div style="font-size:11px;color:#0284c7;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Total Revenue</div>
+                  <div style="font-size:22px;font-weight:700;color:#0c4a6e;margin-top:4px;">₹{{ (consolidatedData()?.total?.revenue || 0) | number:'1.0-0' }}</div>
+                </div>
+                <div style="background:#f0fdf4;border-radius:10px;padding:16px;">
+                  <div style="font-size:11px;color:#16a34a;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Total Orders</div>
+                  <div style="font-size:22px;font-weight:700;color:#14532d;margin-top:4px;">{{ consolidatedData()?.total?.orders || 0 }}</div>
+                </div>
+              </div>
+            }
+
+            <!-- Outlet cards -->
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;">
+              @for (o of outlets(); track o._id) {
+                <div style="background:#fff;border-radius:12px;box-shadow:0 1px 6px rgba(0,0,0,.08);padding:20px;display:flex;flex-direction:column;gap:12px;">
+                  <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+                    <div>
+                      <div style="font-weight:700;font-size:15px;">{{ o.name }}</div>
+                      <div style="font-size:12px;color:#6b7280;margin-top:2px;">{{ o.address }}</div>
+                    </div>
+                    <span [style.background]="o.status === 'ACTIVE' ? '#dcfce7' : '#f3f4f6'"
+                          [style.color]="o.status === 'ACTIVE' ? '#16a34a' : '#9ca3af'"
+                          style="font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;">{{ o.status }}</span>
+                  </div>
+                  @if (o.phone) { <div style="font-size:12px;color:#6b7280;">📞 {{ o.phone }}</div> }
+                  <!-- Table allocation bar -->
+                  <div style="font-size:12px;color:#6b7280;">
+                    🪑 Tables: {{ o.tableLimit > 0 ? o.tableLimit + ' allocated' : 'No limit set' }}
+                  </div>
+                  <div style="display:flex;gap:8px;margin-top:4px;">
+                    <button (click)="openOutletForm(o)" style="flex:1;background:#f3f4f6;border:none;border-radius:6px;padding:7px;font-size:12px;cursor:pointer;">✏️ Edit</button>
+                    <button (click)="toggleOutletStatus(o)" style="flex:1;background:#f3f4f6;border:none;border-radius:6px;padding:7px;font-size:12px;cursor:pointer;">
+                      {{ o.status === 'ACTIVE' ? '⏸ Deactivate' : '▶ Activate' }}
+                    </button>
+                  </div>
+                </div>
+              }
+              @if (outlets().length === 0) {
+                <div style="grid-column:1/-1;text-align:center;padding:40px;color:#9ca3af;">
+                  <div style="font-size:36px;margin-bottom:8px;">🏪</div>
+                  <div style="font-weight:600;">No outlets yet</div>
+                  <div style="font-size:13px;margin-top:4px;">Create your first outlet to get started</div>
+                </div>
+              }
+            </div>
+          </div>
+        }
+
+        <!-- Outlet create/edit modal -->
+        @if (showOutletForm()) {
+          <div (click)="showOutletForm.set(false)" style="position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:900;"></div>
+          <div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border-radius:16px;padding:28px;width:480px;max-width:95vw;max-height:90vh;overflow-y:auto;z-index:901;box-shadow:0 20px 60px rgba(0,0,0,.2);">
+            <div style="font-weight:700;font-size:16px;margin-bottom:20px;">{{ editingOutlet() ? 'Edit Outlet' : 'Create Outlet' }}</div>
+            <div style="display:flex;flex-direction:column;gap:14px;">
+              <div>
+                <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Outlet Name *</label>
+                <input [(ngModel)]="outletForm.name" placeholder="e.g. Connaught Place Branch" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;">
+              </div>
+              <div>
+                <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Address *</label>
+                <input [(ngModel)]="outletForm.address" placeholder="Full address" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;">
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div>
+                  <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Phone</label>
+                  <input [(ngModel)]="outletForm.phone" placeholder="+91 98765 43210" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;">
+                </div>
+                <div>
+                  <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Email</label>
+                  <input [(ngModel)]="outletForm.email" placeholder="outlet@email.com" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;">
+                </div>
+              </div>
+              <!-- Table limit field -->
+              <div>
+                <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Table Limit for this Outlet</label>
+                <input type="number" min="0" [(ngModel)]="outletForm.tableLimit"
+                  placeholder="0"
+                  [max]="availableForOutlet()"
+                  style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;">
+                @if (tableAvailability(); as avail) {
+                  @if (availableForOutlet() > 0) {
+                    <div style="margin-top:5px;font-size:11px;color:#059669;font-weight:600;">
+                      ✓ {{ availableForOutlet() }} table slot(s) available for allocation
+                      (Restaurant limit: {{ avail.restaurantLimit }}, Already allocated: {{ avail.totalAllocated - (editingOutlet()?.tableLimit || 0) }})
+                    </div>
+                  } @else {
+                    <div style="margin-top:5px;font-size:11px;color:#dc2626;font-weight:600;">
+                      ⚠ No table slots remaining. Contact platform admin to increase restaurant quota.
+                    </div>
+                  }
+                } @else {
+                  <div style="margin-top:5px;font-size:11px;color:#9ca3af;">Loading availability...</div>
+                }
+              </div>
+              <!-- Staff accounts (create & edit) -->
+              <div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                  <label style="font-size:12px;font-weight:600;color:#374151;">
+                    {{ editingOutlet() ? 'Staff Accounts' : 'Staff Accounts (optional)' }}
+                  </label>
+                  <button type="button" (click)="addStaffRow()" style="font-size:11px;color:#4f46e5;background:none;border:none;cursor:pointer;font-weight:600;">+ Add Staff</button>
+                </div>
+                @if (editingOutlet()) {
+                  <div style="font-size:11px;color:#6b7280;margin-bottom:8px;">Leave password blank to keep existing password. Fill password to reset it.</div>
+                }
+                @for (s of outletStaffAccounts; track $index) {
+                  <div style="border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:8px;display:flex;flex-direction:column;gap:8px;position:relative;">
+                    <button type="button" (click)="removeStaffRow($index)" style="position:absolute;top:8px;right:8px;background:none;border:none;color:#9ca3af;cursor:pointer;font-size:14px;">✕</button>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                      <div>
+                        <label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px;">Full Name *</label>
+                        <input [(ngModel)]="s.name" placeholder="e.g. Arjun Waiter" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;">
+                      </div>
+                      <div>
+                        <label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px;">Role</label>
+                        <select [(ngModel)]="s.role" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;background:#fff;">
+                          <option value="WAITER">Waiter</option>
+                          <option value="KITCHEN">Kitchen</option>
+                          <option value="MANAGER">Manager</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                      <div>
+                        <label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px;">Login Email *</label>
+                        <input type="email" [(ngModel)]="s.email" placeholder="staff@outlet.com" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;">
+                      </div>
+                      <div>
+                        <label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px;">
+                          {{ editingOutlet() ? 'New Password (optional)' : 'Password * (min 8 chars)' }}
+                        </label>
+                        <input type="password" [(ngModel)]="s.password" [placeholder]="editingOutlet() ? 'Leave blank to keep' : 'Secure password'" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;">
+                      </div>
+                    </div>
+                  </div>
+                }
+                @if (outletStaffAccounts.length === 0) {
+                  <div style="font-size:11px;color:#9ca3af;text-align:center;padding:8px;">
+                    {{ editingOutlet() ? 'No staff assigned to this outlet.' : 'No staff accounts added. Can be added later.' }}
+                  </div>
+                }
+              </div>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:24px;justify-content:flex-end;">
+              <button (click)="showOutletForm.set(false)" style="background:#f3f4f6;border:none;border-radius:8px;padding:9px 20px;font-size:13px;cursor:pointer;">Cancel</button>
+              <button (click)="saveOutlet()" [disabled]="!outletForm.name || !outletForm.address" style="background:#4f46e5;color:#fff;border:none;border-radius:8px;padding:9px 20px;font-size:13px;cursor:pointer;font-weight:600;">Save</button>
             </div>
           </div>
         }
@@ -1243,8 +1499,10 @@ Chart.register(...registerables);
   `]
 })
 export class DashboardComponent implements OnInit, OnDestroy {
-  private api  = inject(ApiService);
-  private sock = inject(SocketService);
+  private api         = inject(ApiService);
+  private sock        = inject(SocketService);
+  private outletSvc   = inject(OutletService);
+  private menuSvc     = inject(MenuService);
   auth = inject(AuthService);
 
   orders    = signal<any[]>([]);
@@ -1254,8 +1512,23 @@ export class DashboardComponent implements OnInit, OnDestroy {
   peakDays  = signal<any[]>([]);
   error     = signal<string | null>(null);
   activeOrdersCount = signal<number>(0);
-  activeTab = signal<'orders'|'tables'|'menu'|'staff'|'favorites'>('orders');
+  activeTab = signal<'orders'|'tables'|'menu'|'staff'|'favorites'|'outlets'>('orders');
   selectedPeriod = 'day';
+
+  // Outlet state (for OWNER/MANAGER)
+  outlets         = signal<Outlet[]>([]);
+  selectedOutletId = signal<string | null>(null);
+  outletStats     = signal<any>(null);
+  consolidatedData = signal<any>(null);
+  showOutletForm    = signal(false);
+  editingOutlet     = signal<Outlet | null>(null);
+  outletForm = { name: '', address: '', phone: '', email: '', tableLimit: 0 };
+  outletStaffAccounts: { name: string; email: string; password: string; role: string }[] = [];
+  tableAvailability = signal<import('../../core/services/outlet.service').TableAvailability | null>(null);
+
+  // Waiter notification state
+  pendingServiceOrders = signal<any[]>([]);
+  showNotifications    = signal(false);
 
   receiptOrder   = signal<any | null>(null);
   receiptLoading = signal(false);
@@ -1331,6 +1604,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.loadOrders();
     if (this.isManager()) {
       this.loadSales(); this.loadItems(); this.loadTime();
+      this.loadOutlets();
     }
     this.sock.joinStaffRoom();
     this.sock.on('order:new').subscribe(()      => this.loadOrders());
@@ -1338,6 +1612,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.sock.on('payment:recorded').subscribe(() => {
       this.loadOrders();
       if (this.isManager()) this.loadSales();
+    });
+    // Waiter notification: kitchen marked order DONE
+    this.sock.on<any>('order:ready_to_serve').subscribe(notification => {
+      this.pendingServiceOrders.update(list => [notification, ...list]);
     });
     this.timer = setInterval(() => {
       this.loadOrders();
@@ -1351,29 +1629,152 @@ export class DashboardComponent implements OnInit, OnDestroy {
       .forEach(c => c?.destroy());
   }
 
+  // ── Outlet methods ──────────────────────────────────
+  loadOutlets() {
+    this.outletSvc.getOutlets().subscribe({
+      next: v => {
+        this.outlets.set(v);
+        // OWNER: auto-select Main Branch (first outlet) on first load so orders/analytics
+        // are scoped to one outlet by default, not mixed across all outlets.
+        if (this.auth.user()?.role === 'OWNER' && !this.selectedOutletId() && v.length > 0) {
+          this.selectOutlet(v[0]._id);
+        }
+      },
+      error: e => console.error(e)
+    });
+  }
+
+  selectOutlet(id: string | null) {
+    this.selectedOutletId.set(id);
+    // Sync menu service so menu tab shows the selected outlet's items
+    this.menuSvc.selectedOutletId.set(id);
+    this.loadOrders();
+    if (this.isManager()) { this.loadSales(); this.loadItems(); this.loadTime(); }
+    if (id) {
+      this.outletSvc.getOutletStats(id).subscribe({ next: v => this.outletStats.set(v), error: e => console.error(e) });
+    } else {
+      this.outletStats.set(null);
+      this.outletSvc.getConsolidated(this.selectedPeriod).subscribe({ next: v => this.consolidatedData.set(v), error: e => console.error(e) });
+    }
+  }
+
+  openOutletForm(outlet: Outlet | null = null) {
+    this.editingOutlet.set(outlet);
+    this.outletForm = outlet
+      ? { name: outlet.name, address: outlet.address, phone: outlet.phone || '', email: outlet.email || '', tableLimit: outlet.tableLimit || 0 }
+      : { name: '', address: '', phone: '', email: '', tableLimit: 0 };
+    // For edit: load existing staff of this outlet; for create: start with one blank row
+    if (outlet) {
+      this.outletStaffAccounts = [];
+      this.api.get<any[]>(`/tenant/staff?outletId=${outlet._id}`).subscribe({
+        next: ({ data }) => {
+          this.outletStaffAccounts = (data || []).map((u: any) => ({ name: u.name, email: u.email, password: '', role: u.role }));
+        },
+        error: () => { this.outletStaffAccounts = []; }
+      });
+    } else {
+      this.outletStaffAccounts = [{ name: '', email: '', password: '', role: 'WAITER' }];
+    }
+    this.tableAvailability.set(null);
+    this.outletSvc.getTableAvailability().subscribe({ next: d => this.tableAvailability.set(d), error: () => {} });
+    this.showOutletForm.set(true);
+  }
+
+  addStaffRow() { this.outletStaffAccounts = [...this.outletStaffAccounts, { name: '', email: '', password: '', role: 'WAITER' }]; }
+  removeStaffRow(i: number) { this.outletStaffAccounts = this.outletStaffAccounts.filter((_, idx) => idx !== i); }
+
+  availableForOutlet(): number {
+    const avail = this.tableAvailability();
+    if (!avail) return 0;
+    const editing = this.editingOutlet();
+    const currentAlloc = editing ? (editing.tableLimit || 0) : 0;
+    return avail.remaining + currentAlloc;
+  }
+
+  saveOutlet() {
+    const editing = this.editingOutlet();
+    const staffAccounts = this.outletStaffAccounts.filter(s => s.email);
+    const payload: any = { ...this.outletForm, tableLimit: Number(this.outletForm.tableLimit) || 0 };
+    if (staffAccounts.length) payload['staffAccounts'] = staffAccounts;
+    const obs = editing
+      ? this.outletSvc.updateOutlet(editing._id, payload)
+      : this.outletSvc.createOutlet(payload);
+    obs.subscribe({ next: () => { this.showOutletForm.set(false); this.loadOutlets(); }, error: e => alert(e?.error?.message || 'Failed to save outlet') });
+  }
+
+  toggleOutletStatus(outlet: Outlet) {
+    this.outletSvc.toggleOutlet(outlet._id).subscribe({ next: () => this.loadOutlets(), error: e => console.error(e) });
+  }
+
+  // Waiter: dismiss notification after marking served
+  dismissNotification(orderId: string) {
+    this.pendingServiceOrders.update(list => list.filter(n => n.orderId !== orderId));
+  }
+
+  markServed(notification: any) {
+    this.api.patch(`/tenant/orders/${notification.orderId}/status`, { status: 'SERVED' }).subscribe({
+      next: () => { this.dismissNotification(notification.orderId); this.loadOrders(); },
+      error: e => console.error(e)
+    });
+  }
+
+  // Mark a READY_TO_SERVE order as SERVED directly from the orders table
+  markOrderServed(order: any) {
+    this.api.patch(`/tenant/orders/${order._id}/status`, { status: 'SERVED' }).subscribe({
+      next: () => {
+        this.dismissNotification(order._id);
+        this.loadOrders();
+      },
+      error: (e: any) => this.error.set(e?.error?.message || 'Failed to mark as served')
+    });
+  }
+
   // ── Loaders ─────────────────────────────────────────
   loadOrders() {
-    this.api.get<any[]>('/orders', { limit:50 }).subscribe({
+    const params: any = { limit: 50 };
+    const oid = this.selectedOutletId();
+    if (oid) params['outletId'] = oid;
+    this.api.get<any[]>('/tenant/orders', params).subscribe({
       next: ({ data }) => this.orders.set(data),
       error: e => console.error(e)
     });
   }
   loadSales() {
-    this.api.get<any>('/analytics/sales', { period: this.selectedPeriod }).subscribe({
+    const params: any = { period: this.selectedPeriod };
+    const oid = this.selectedOutletId();
+    if (oid) params['outletId'] = oid;
+    this.api.get<any>('/tenant/analytics/sales', params).subscribe({
       next: ({ data }) => this.sales.set(data),
       error: e => console.error(e)
     });
   }
   loadItems() {
-    this.api.get<any>('/analytics/items', { period: this.selectedPeriod }).subscribe({
+    const params: any = { period: this.selectedPeriod };
+    const oid = this.selectedOutletId();
+    if (oid) params['outletId'] = oid;
+    this.api.get<any>('/tenant/analytics/items', params).subscribe({
       next: ({ data }) => this.topItems.set(data?.top10 || []),
       error: e => console.error(e)
     });
   }
   loadTime() {
-    this.api.get<any>('/analytics/time', { period: this.selectedPeriod }).subscribe({
+    const params: any = { period: this.selectedPeriod };
+    const oid = this.selectedOutletId();
+    if (oid) params['outletId'] = oid;
+    this.api.get<any>('/tenant/analytics/time', params).subscribe({
       next: ({ data }) => { this.peakHours.set(data?.byHour || []); this.peakDays.set(data?.byDayOfWeek || []); },
       error: e => console.error(e)
+    });
+  }
+  loadFavorites() {
+    const params: any = { period: this.favPeriod, limit: 100 };
+    const oid = this.selectedOutletId();
+    if (oid) params['outletId'] = oid;
+    if (this.favItemSearch.trim()) params['item'] = this.favItemSearch.trim();
+    this.favLoading.set(true);
+    this.api.get<any>('/tenant/analytics/customers/favorites', params).subscribe({
+      next: ({ data }) => { this.favRows.set(data?.rows ?? data); this.favLoading.set(false); },
+      error: e => { console.error(e); this.favLoading.set(false); }
     });
   }
 
@@ -1399,7 +1800,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (!order) return;
     this.payingOrder.set(true);
     this.payError.set(null);
-    this.api.post('/payments/mark-paid', {
+    this.api.post('/tenant/payments/mark-paid', {
       sessionId: order.sessionId,
       orderId: order._id,
       method: this.selectedPayMode
@@ -1423,7 +1824,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   viewReceipt(order: any) {
     this.receiptError.set(null);
     this.receiptLoading.set(true);
-    this.api.get<any>(`/orders/${order._id}/receipt`).subscribe({
+    this.api.get<any>(`/tenant/orders/${order._id}/receipt`).subscribe({
       next: ({ data }) => { this.receiptOrder.set(data); this.receiptLoading.set(false); },
       error: (e: any) => { this.receiptLoading.set(false); this.receiptError.set(e?.error?.message || 'Unable to load receipt'); }
     });
@@ -1431,21 +1832,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
   closeReceipt()  { this.receiptOrder.set(null); }
   printReceipt()  { window.print(); }
 
-  // ── Favorites ────────────────────────────────────────
-  loadFavorites() {
-    this.favLoading.set(true);
-    const params: any = { period: this.favPeriod, limit: 100 };
-    if (this.favItemSearch.trim()) params['item'] = this.favItemSearch.trim();
-    this.api.get<any>('/analytics/customers/favorites', params).subscribe({
-      next: ({ data }) => { this.favRows.set(data.rows); this.favLoading.set(false); },
-      error: () => this.favLoading.set(false)
-    });
-  }
 
   exportFavorites() {
     const params: any = { period: this.favPeriod };
     if (this.favItemSearch.trim()) params['item'] = this.favItemSearch.trim();
-    this.api.get<any[]>('/analytics/customers/export', params).subscribe({
+    this.api.get<any[]>('/tenant/analytics/customers/export', params).subscribe({
       next: ({ data }) => this.downloadExcel(data),
       error: () => {}
     });
@@ -1473,7 +1864,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   // ── Customer Profile ─────────────────────────────────
   viewCustomerProfile(mobile: string) {
-    this.api.get<any>(`/analytics/customers/${mobile}`).subscribe({
+    this.api.get<any>(`/tenant/analytics/customers/${mobile}`).subscribe({
       next: ({ data }) => this.customerProfile.set(data),
       error: () => {}
     });
@@ -1729,5 +2120,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   getStatusIcon(s: string) {
     return ({ PENDING:'⏳', PREPARING:'👨‍🍳', READY:'✅', SERVED:'🍽️', COMPLETED:'✓', CANCELLED:'✗' } as any)[s?.toUpperCase()] || '•';
+  }
+
+  getOutletName(outletId: string): string {
+    return this.outlets().find(o => o._id === outletId)?.name || '';
   }
 }

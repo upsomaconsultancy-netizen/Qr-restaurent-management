@@ -4,15 +4,17 @@ import { ApiService } from '../../core/services/api.service';
 import { SocketService } from '../../core/services/socket.service';
 import { AuthService } from '../../core/services/auth.service';
 
-const FLOW = ['PENDING', 'ACCEPTED', 'PREPARING', 'READY', 'SERVED'] as const;
+// Kitchen flow ends at DONE — waiter marks WAITING_FOR_SERVICE → SERVED
+const KITCHEN_FLOW = ['PENDING', 'ACCEPTED', 'PREPARING', 'DONE'] as const;
 
 const STATUS_CFG: Record<string, { bg: string; text: string; label: string }> = {
-  PENDING:   { bg: '#fef3c7', text: '#92400e', label: 'Pending'   },
-  ACCEPTED:  { bg: '#dbeafe', text: '#1e40af', label: 'Accepted'  },
-  PREPARING: { bg: '#ede9fe', text: '#6b21a8', label: 'Preparing' },
-  READY:     { bg: '#d1fae5', text: '#065f46', label: 'Ready'     },
-  SERVED:    { bg: '#f1f5f9', text: '#475569', label: 'Served'    },
-  CANCELLED: { bg: '#fee2e2', text: '#991b1b', label: 'Cancelled' },
+  PENDING:             { bg: '#fef3c7', text: '#92400e', label: 'Pending'           },
+  ACCEPTED:            { bg: '#dbeafe', text: '#1e40af', label: 'Accepted'          },
+  PREPARING:           { bg: '#ede9fe', text: '#6b21a8', label: 'Preparing'         },
+  DONE:                { bg: '#d1fae5', text: '#065f46', label: 'Done ✓'            },
+  WAITING_FOR_SERVICE: { bg: '#fef9c3', text: '#713f12', label: 'Awaiting Service'  },
+  SERVED:              { bg: '#f1f5f9', text: '#475569', label: 'Served'            },
+  CANCELLED:           { bg: '#fee2e2', text: '#991b1b', label: 'Cancelled'         },
 };
 
 @Component({
@@ -78,7 +80,7 @@ const STATUS_CFG: Record<string, { bg: string; text: string; label: string }> = 
       <!-- ── Board ── -->
       <div class="kd-board">
         @for (order of filteredOrders(); track order._id) {
-          <div class="kd-card" [class.kd-card-urgent]="order.status === 'PENDING'" [class.kd-card-ready]="order.status === 'READY'">
+          <div class="kd-card" [class.kd-card-urgent]="order.status === 'PENDING'" [class.kd-card-ready]="order.status === 'DONE'">
 
             <!-- Card header -->
             <div class="kd-card-head">
@@ -134,7 +136,7 @@ const STATUS_CFG: Record<string, { bg: string; text: string; label: string }> = 
                   <span class="kd-item-name">{{ item.name }}</span>
                   @if (item.variant?.name) { <span class="kd-item-var">{{ item.variant.name }}</span> }
                   <span class="kd-item-dot" [style.background]="statusBg(item.status)" [style.color]="statusText(item.status)">
-                    {{ item.status === 'PENDING' ? '·' : (item.status === 'READY' ? '✓' : item.status[0]) }}
+                    {{ item.status === 'PENDING' ? '·' : (item.status === 'DONE' ? '✓' : item.status[0]) }}
                   </span>
                 </div>
               }
@@ -152,13 +154,22 @@ const STATUS_CFG: Record<string, { bg: string; text: string; label: string }> = 
                 </svg>
                 View Details
               </button>
-              @if (next(order.status); as nxt) {
-                <button class="kd-advance-btn" [class.kd-btn-ready]="nxt === 'READY'" (click)="advance(order, nxt)">
-                  Mark {{ nxt }}
+              @if (isAwaitingService(order.status)) {
+                <div class="kd-awaiting-badge">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="9 18 15 12 9 6"/>
+                    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
                   </svg>
-                </button>
+                  Awaiting Waiter
+                </div>
+              } @else {
+                @if (next(order.status); as nxt) {
+                  <button class="kd-advance-btn" [class.kd-btn-done]="nxt === 'DONE'" (click)="advance(order, nxt)">
+                    Mark {{ nxt === 'DONE' ? 'Done' : nxt }}
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="9 18 15 12 9 6"/>
+                    </svg>
+                  </button>
+                }
               }
             </div>
           </div>
@@ -260,13 +271,22 @@ const STATUS_CFG: Record<string, { bg: string; text: string; label: string }> = 
 
           <div class="kd-modal-foot">
             <button class="kd-modal-close-btn" (click)="closeModal()">Close</button>
-            @if (next(selectedOrder()!.status); as nxt) {
-              <button class="kd-advance-btn" [class.kd-btn-ready]="nxt === 'READY'" (click)="advanceFromModal(nxt)">
-                Mark Order {{ nxt }}
+            @if (isAwaitingService(selectedOrder()!.status)) {
+              <div class="kd-awaiting-badge kd-awaiting-badge-lg">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="9 18 15 12 9 6"/>
+                  <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
                 </svg>
-              </button>
+                Awaiting Waiter Service
+              </div>
+            } @else {
+              @if (next(selectedOrder()!.status); as nxt) {
+                <button class="kd-advance-btn" [class.kd-btn-done]="nxt === 'DONE'" (click)="advanceFromModal(nxt)">
+                  Mark Order {{ nxt === 'DONE' ? 'Done' : nxt }}
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="9 18 15 12 9 6"/>
+                  </svg>
+                </button>
+              }
             }
           </div>
         </div>
@@ -435,8 +455,15 @@ const STATUS_CFG: Record<string, { bg: string; text: string; label: string }> = 
       font-size: .78rem; font-weight: 700; cursor: pointer; transition: background .15s;
     }
     .kd-advance-btn:hover { background: #ea6c00; }
-    .kd-btn-ready { background: var(--accent-green); }
-    .kd-btn-ready:hover { background: #059669; }
+    .kd-btn-done { background: var(--accent-green); }
+    .kd-btn-done:hover { background: #059669; }
+    .kd-awaiting-badge {
+      flex: 2; display: flex; align-items: center; justify-content: center; gap: .35rem;
+      padding: .5rem .75rem; background: rgba(234,179,8,.12);
+      border: 1px solid rgba(234,179,8,.3); color: #fbbf24;
+      border-radius: var(--radius-sm); font-size: .75rem; font-weight: 700;
+    }
+    .kd-awaiting-badge-lg { flex: 3; font-size: .82rem; }
 
     /* Empty state */
     .kd-empty {
@@ -536,11 +563,11 @@ export class KitchenComponent implements OnInit {
   activeFilter  = signal<string>('ALL');
 
   filterOptions = [
-    { key: 'ALL',      label: 'All'      },
-    { key: 'PENDING',  label: 'Pending'  },
-    { key: 'ACCEPTED', label: 'Accepted' },
-    { key: 'PREPARING',label: 'Preparing'},
-    { key: 'READY',    label: 'Ready'    },
+    { key: 'ALL',       label: 'All'       },
+    { key: 'PENDING',   label: 'Pending'   },
+    { key: 'ACCEPTED',  label: 'Accepted'  },
+    { key: 'PREPARING', label: 'Preparing' },
+    { key: 'DONE',      label: 'Done'      },
   ];
 
   ngOnInit() {
@@ -551,7 +578,7 @@ export class KitchenComponent implements OnInit {
   }
 
   load() {
-    this.api.get<any[]>('/orders/kitchen-queue').subscribe(({ data }) => this.orders.set(data));
+    this.api.get<any[]>('/tenant/orders/kitchen-queue').subscribe(({ data }) => this.orders.set(data));
   }
 
   filteredOrders(): any[] {
@@ -564,13 +591,18 @@ export class KitchenComponent implements OnInit {
     return this.orders().filter(o => o.status === key).length;
   }
 
+  // Kitchen can only advance up to DONE; DONE and beyond are handled by waiters
   next(status: string): string | null {
-    const i = FLOW.indexOf(status as any);
-    return i >= 0 && i < FLOW.length - 1 ? FLOW[i + 1] : null;
+    const i = KITCHEN_FLOW.indexOf(status as any);
+    return i >= 0 && i < KITCHEN_FLOW.length - 1 ? KITCHEN_FLOW[i + 1] : null;
+  }
+
+  isAwaitingService(status: string): boolean {
+    return status === 'DONE' || status === 'WAITING_FOR_SERVICE';
   }
 
   advance(order: any, status: string) {
-    this.api.patch(`/orders/${order._id}/status`, { status }).subscribe(() => this.load());
+    this.api.patch(`/tenant/orders/${order._id}/status`, { status }).subscribe(() => this.load());
   }
 
   viewOrder(order: any)  { this.selectedOrder.set(order); }
@@ -579,7 +611,7 @@ export class KitchenComponent implements OnInit {
   advanceFromModal(status: string) {
     const o = this.selectedOrder();
     if (!o) return;
-    this.api.patch(`/orders/${o._id}/status`, { status }).subscribe(() => {
+    this.api.patch(`/tenant/orders/${o._id}/status`, { status }).subscribe(() => {
       this.load();
       this.closeModal();
     });

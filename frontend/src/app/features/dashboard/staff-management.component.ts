@@ -157,7 +157,7 @@ export class StaffManagementComponent implements OnInit {
   }
 
   loadStaff() {
-    this.api.get<any[]>('/staff').subscribe(({ data }) => this.staffList.set(data));
+    this.api.get<any[]>('/tenant/staff').subscribe(({ data }) => this.staffList.set(data));
   }
 
   openForm(staff?: any) {
@@ -196,8 +196,8 @@ export class StaffManagementComponent implements OnInit {
     if (this.password().trim()) payload.password = this.password();
 
     const request = this.selectedStaff()
-      ? this.api.patch<any>(`/staff/${this.selectedStaff()!._id}`, payload)
-      : this.api.post<any>('/staff', payload);
+      ? this.api.patch<any>(`/tenant/staff/${this.selectedStaff()!._id}`, payload)
+      : this.api.post<any>('/tenant/staff', payload);
 
     request.subscribe({
       next: () => {
@@ -214,7 +214,7 @@ export class StaffManagementComponent implements OnInit {
 
   toggleActive(staff: any) {
     this.saving.set(true);
-    this.api.patch(`/staff/${staff._id}/toggle`, {}).subscribe({
+    this.api.patch(`/tenant/staff/${staff._id}/toggle`, {}).subscribe({
       next: () => {
         this.loadStaff();
         this.saving.set(false);
