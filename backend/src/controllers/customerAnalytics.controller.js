@@ -141,7 +141,7 @@ exports.customerProfile = async (req, res) => {
     .sort('-createdAt')
     .populate('tableId', 'number name')
     .lean();
-  if (!sessions.length) throw ApiError.notFound('No sessions found for this mobile number');
+  if (!sessions.length) throw ApiError.notFound('No visit history found for this mobile number.');
 
   const sessionIds = sessions.map((s) => s._id);
   const orderQuery = {

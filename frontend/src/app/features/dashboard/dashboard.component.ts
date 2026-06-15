@@ -24,16 +24,20 @@ Chart.register(...registerables);
       <header class="dash-header">
         <div class="dash-header-inner">
           <div class="brand">
-            <div class="brand-icon">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                <path d="M3 9h18v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/>
-                <path d="M3 9V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4"/>
-                <path d="M8 9V7a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-              </svg>
-            </div>
+            @if (restaurantInfo()?.logoUrl) {
+              <img class="brand-logo" [src]="restaurantInfo()!.logoUrl" [alt]="restaurantInfo()!.name">
+            } @else {
+              <div class="brand-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <path d="M3 9h18v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/>
+                  <path d="M3 9V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4"/>
+                  <path d="M8 9V7a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                </svg>
+              </div>
+            }
             <div>
-              <div class="brand-name">RestaurantOS</div>
-              <div class="brand-sub">Intelligent Restaurant Management</div>
+              <div class="brand-name">{{ restaurantInfo()?.name || 'RestaurantOS' }}</div>
+              <div class="brand-sub">{{ restaurantInfo()?.address || 'Intelligent Restaurant Management' }}</div>
             </div>
           </div>
 
@@ -750,14 +754,24 @@ Chart.register(...registerables);
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;">
               @for (o of outlets(); track o._id) {
                 <div style="background:#fff;border-radius:12px;box-shadow:0 1px 6px rgba(0,0,0,.08);padding:20px;display:flex;flex-direction:column;gap:12px;">
-                  <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-                    <div>
-                      <div style="font-weight:700;font-size:15px;">{{ o.name }}</div>
-                      <div style="font-size:12px;color:#6b7280;margin-top:2px;">{{ o.address }}</div>
+                  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+                    <div style="display:flex;align-items:center;gap:10px;min-width:0;">
+                      @if (restaurantInfo()?.logoUrl) {
+                        <img [src]="restaurantInfo()!.logoUrl" [alt]="restaurantInfo()!.name"
+                          style="width:40px;height:40px;border-radius:8px;object-fit:cover;border:1px solid #e5e7eb;flex-shrink:0;">
+                      } @else {
+                        <div style="width:40px;height:40px;border-radius:8px;background:linear-gradient(135deg,#4f46e5,#7c3aed);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:14px;flex-shrink:0;">
+                          {{ restaurantInfo()?.name?.[0]?.toUpperCase() || o.name[0].toUpperCase() }}
+                        </div>
+                      }
+                      <div style="min-width:0;">
+                        <div style="font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ o.name }}</div>
+                        <div style="font-size:12px;color:#6b7280;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ o.address }}</div>
+                      </div>
                     </div>
                     <span [style.background]="o.status === 'ACTIVE' ? '#dcfce7' : '#f3f4f6'"
                           [style.color]="o.status === 'ACTIVE' ? '#16a34a' : '#9ca3af'"
-                          style="font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;">{{ o.status }}</span>
+                          style="font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;flex-shrink:0;">{{ o.status }}</span>
                   </div>
                   @if (o.phone) { <div style="font-size:12px;color:#6b7280;">📞 {{ o.phone }}</div> }
                   <!-- Table allocation bar -->
@@ -777,6 +791,64 @@ Chart.register(...registerables);
                   <div style="font-size:36px;margin-bottom:8px;">🏪</div>
                   <div style="font-weight:600;">No outlets yet</div>
                   <div style="font-size:13px;margin-top:4px;">Create your first outlet to get started</div>
+                </div>
+              }
+            </div>
+
+            <!-- Bill-level taxes -->
+            <div style="background:#fff;border-radius:12px;box-shadow:0 1px 6px rgba(0,0,0,.08);padding:20px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                <div>
+                  <div style="font-weight:700;font-size:15px;">Bill Taxes</div>
+                  <div style="font-size:12px;color:#6b7280;margin-top:2px;">These taxes are applied once on the full bill total (not per item)</div>
+                </div>
+                <button (click)="addBillTax()" style="background:#4f46e5;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:12px;cursor:pointer;font-weight:600;">+ Add Tax</button>
+              </div>
+
+              @if (billTaxRows().length === 0) {
+                <div style="text-align:center;padding:24px;color:#9ca3af;font-size:13px;">
+                  No bill taxes configured. Add GST, Service Charge, etc. that apply to the entire bill.
+                </div>
+              }
+
+              @for (tax of billTaxRows(); track $index) {
+                <div style="display:grid;grid-template-columns:1fr 120px 130px auto auto;gap:8px;align-items:center;margin-bottom:10px;">
+                  <input
+                    [value]="tax.name"
+                    (input)="updateBillTaxField($index, 'name', $any($event.target).value)"
+                    placeholder="Tax name (e.g. GST, CGST)"
+                    style="padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;width:100%;box-sizing:border-box;">
+                  <select
+                    [value]="tax.type"
+                    (change)="updateBillTaxField($index, 'type', $any($event.target).value)"
+                    style="padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;background:#fff;width:100%;box-sizing:border-box;">
+                    <option value="PERCENTAGE">% of Bill</option>
+                    <option value="FLAT">&#8377; Flat</option>
+                  </select>
+                  <div style="position:relative;">
+                    <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#6b7280;font-size:13px;pointer-events:none;">
+                      {{ tax.type === 'FLAT' ? '₹' : '%' }}
+                    </span>
+                    <input
+                      type="number"
+                      min="0"
+                      [value]="tax.rate"
+                      (input)="updateBillTaxField($index, 'rate', +$any($event.target).value)"
+                      style="padding:8px 10px 8px 26px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;width:100%;box-sizing:border-box;">
+                  </div>
+                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;font-size:12px;color:#374151;">
+                    <input type="checkbox" [checked]="tax.enabled !== false" (change)="updateBillTaxField($index, 'enabled', $any($event.target).checked)" style="width:15px;height:15px;accent-color:#4f46e5;cursor:pointer;">
+                    Active
+                  </label>
+                  <button (click)="removeBillTax($index)" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:18px;padding:0 4px;line-height:1;">&#x2715;</button>
+                </div>
+              }
+
+              @if (billTaxRows().length > 0) {
+                <div style="display:flex;justify-content:flex-end;margin-top:12px;">
+                  <button (click)="saveBillTaxes()" [disabled]="savingBillTaxes()" style="background:#059669;color:#fff;border:none;border-radius:8px;padding:9px 22px;font-size:13px;cursor:pointer;font-weight:600;">
+                    {{ savingBillTaxes() ? 'Saving...' : 'Save Bill Taxes' }}
+                  </button>
                 </div>
               }
             </div>
@@ -1020,6 +1092,10 @@ Chart.register(...registerables);
       display:flex; align-items:center; justify-content:space-between; gap:1rem;
     }
     .brand { display:flex; align-items:center; gap:.75rem; }
+    .brand-logo {
+      width:42px; height:42px; border-radius:10px;
+      object-fit:cover; border:1px solid var(--c-border); flex-shrink:0;
+    }
     .brand-icon {
       width:40px; height:40px; background:var(--c-primary); color:#fff;
       border-radius:var(--r-sm); display:flex; align-items:center; justify-content:center;
@@ -1513,6 +1589,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private menuSvc     = inject(MenuService);
   auth = inject(AuthService);
 
+  restaurantInfo = signal<any>(null);
+
   orders    = signal<any[]>([]);
   sales     = signal<any>(null);
   topItems  = signal<any[]>([]);
@@ -1533,6 +1611,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
   outletForm = { name: '', address: '', phone: '', email: '', tableLimit: 0 };
   outletStaffAccounts: { name: string; email: string; password: string; role: string }[] = [];
   tableAvailability = signal<import('../../core/services/outlet.service').TableAvailability | null>(null);
+
+  // Bill-level taxes state
+  billTaxRows = signal<{ name: string; rate: number; type: 'PERCENTAGE' | 'FLAT'; enabled: boolean }[]>([]);
+  savingBillTaxes = signal(false);
 
   // Waiter notification state
   pendingServiceOrders = signal<any[]>([]);
@@ -1610,6 +1692,19 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit() {
+    this.api.get<any>('/tenant/restaurant/profile').subscribe({
+      next: ({ data }) => {
+        this.restaurantInfo.set(data);
+        if (Array.isArray(data.billTaxes)) {
+          this.billTaxRows.set(data.billTaxes.map((t: any) => ({
+            name: t.name,
+            rate: t.rate,
+            type: t.type || 'PERCENTAGE',
+            enabled: t.enabled !== false
+          })));
+        }
+      }
+    });
     this.loadOrders();
     if (this.isManager()) {
       this.loadSales(); this.loadItems(); this.loadTime();
@@ -1713,6 +1808,39 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   toggleOutletStatus(outlet: Outlet) {
     this.outletSvc.toggleOutlet(outlet._id).subscribe({ next: () => this.loadOutlets(), error: e => console.error(e) });
+  }
+
+  // ── Bill-level tax methods ──────────────────────────────────
+  addBillTax() {
+    this.billTaxRows.update(rows => [...rows, { name: '', rate: 0, type: 'PERCENTAGE', enabled: true }]);
+  }
+
+  removeBillTax(i: number) {
+    this.billTaxRows.update(rows => rows.filter((_, idx) => idx !== i));
+  }
+
+  updateBillTaxField(i: number, field: string, value: any) {
+    this.billTaxRows.update(rows => rows.map((r, idx) => idx === i ? { ...r, [field]: value } : r));
+  }
+
+  saveBillTaxes() {
+    const rows = this.billTaxRows();
+    for (const t of rows) {
+      if (!t.name.trim()) { alert('Each bill tax must have a name.'); return; }
+      if (t.rate < 0) { alert('Tax rate cannot be negative.'); return; }
+    }
+    this.savingBillTaxes.set(true);
+    this.api.patch<any>('/tenant/restaurant/bill-taxes', { billTaxes: rows }).subscribe({
+      next: ({ data }) => {
+        this.savingBillTaxes.set(false);
+        this.restaurantInfo.update(r => r ? { ...r, billTaxes: data } : r);
+        alert('Bill taxes saved successfully.');
+      },
+      error: e => {
+        this.savingBillTaxes.set(false);
+        alert(e?.error?.message || 'Failed to save bill taxes.');
+      }
+    });
   }
 
   // Waiter: dismiss notification after marking served
@@ -1839,7 +1967,88 @@ export class DashboardComponent implements OnInit, OnDestroy {
     });
   }
   closeReceipt()  { this.receiptOrder.set(null); }
-  printReceipt()  { window.print(); }
+
+  printReceipt() {
+    const r = this.receiptOrder();
+    if (!r) return;
+
+    const items = (r.order?.items || [])
+      .filter((i: any) => i.status !== 'CANCELLED')
+      .map((i: any) => `
+        <tr>
+          <td>${i.name}${i.variant?.name ? ` <span style="color:#666;font-size:10px;">(${i.variant.name})</span>` : ''}</td>
+          <td style="text-align:right">${i.qty}</td>
+          <td style="text-align:right">${(+i.unitPrice).toFixed(2)}</td>
+          <td style="text-align:right">${(+i.lineTotal).toFixed(2)}</td>
+        </tr>`).join('');
+
+    const taxes = (r.order?.taxes || [])
+      .filter((t: any) => (t.amount || 0) > 0)
+      .map((t: any) => `<div style="display:flex;justify-content:space-between;font-size:11px;padding:.15rem 0;color:#555;"><span>${t.name}</span><span>₹${(+t.amount).toFixed(2)}</span></div>`)
+      .join('');
+
+    const logo = r.restaurant?.logoUrl
+      ? `<img src="${r.restaurant.logoUrl}" style="width:64px;height:64px;object-fit:contain;border-radius:8px;margin-bottom:.5rem;">`
+      : '';
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+      <title>Receipt #${r.order?.orderNumber}</title>
+      <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Courier New', monospace; font-size: 12px; color: #111; background: #fff; }
+        .rcpt { max-width: 320px; margin: 0 auto; padding: 16px; text-align: center; }
+        table { width: 100%; border-collapse: collapse; font-size: 11px; margin: .5rem 0; }
+        th { border-bottom: 1px dashed #999; padding: .25rem .1rem; font-weight: bold; text-align: left; }
+        td { padding: .2rem .1rem; vertical-align: top; }
+        .num { text-align: right; }
+        .divider { color: #666; margin: .5rem 0; font-size: 10px; overflow: hidden; }
+        .details { text-align: left; margin: .5rem 0; }
+        .row { display: flex; justify-content: space-between; font-size: 11px; padding: .15rem 0; }
+        .row span:first-child { color: #666; }
+        .row span:last-child { font-weight: 600; }
+        .grand { font-size: 14px; font-weight: bold; padding: .5rem 0; }
+        @media print { @page { margin: 8mm; } }
+      </style>
+    </head><body><div class="rcpt">
+      ${logo}
+      <div style="font-size:15px;font-weight:bold;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.2rem;">${r.restaurant?.name || ''}</div>
+      ${r.restaurant?.address ? `<div style="font-size:11px;color:#444;margin:.1rem 0;">${r.restaurant.address}</div>` : ''}
+      ${r.restaurant?.phone ? `<div style="font-size:11px;color:#444;margin:.1rem 0;">📞 ${r.restaurant.phone}</div>` : ''}
+      ${r.restaurant?.gstin ? `<div style="font-size:11px;color:#444;margin:.1rem 0;">GSTIN: ${r.restaurant.gstin}</div>` : ''}
+      ${r.restaurant?.email ? `<div style="font-size:11px;color:#444;margin:.1rem 0;">${r.restaurant.email}</div>` : ''}
+      <div class="divider">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</div>
+      <div style="font-size:12px;font-weight:bold;text-transform:uppercase;letter-spacing:.06em;margin:.2rem 0;">TAX INVOICE</div>
+      <div class="divider">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</div>
+      <div class="details">
+        <div class="row"><span>Order #</span><span>${r.order?.orderNumber}</span></div>
+        <div class="row"><span>Table</span><span>${r.table?.name || ('Table ' + r.table?.number)}</span></div>
+        ${r.order?.customerSessionId?.customerName ? `<div class="row"><span>Customer</span><span>${r.order.customerSessionId.customerName}</span></div>` : ''}
+        ${r.order?.customerSessionId?.mobileNumber ? `<div class="row"><span>Mobile</span><span>${r.order.customerSessionId.mobileNumber}</span></div>` : ''}
+        <div class="row"><span>Payment</span><span>${r.order?.paymentMode || r.order?.paymentStatus || ''}</span></div>
+        <div class="row"><span>Generated</span><span>${new Date(r.generatedAt || Date.now()).toLocaleString('en-IN')}</span></div>
+      </div>
+      <div class="divider">───────────────────────────────────</div>
+      <table><thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Rate</th><th class="num">Amt</th></tr></thead>
+      <tbody>${items}</tbody></table>
+      <div class="divider">───────────────────────────────────</div>
+      <div style="text-align:left;">
+        <div class="row"><span>Subtotal</span><span>₹${(+r.order?.subtotal || 0).toFixed(2)}</span></div>
+        ${taxes}
+        <div class="divider">───────────────────────────────────</div>
+        <div class="row grand"><span>GRAND TOTAL</span><span>₹${(+r.order?.total || 0).toFixed(2)}</span></div>
+      </div>
+      <div class="divider">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</div>
+      <div style="font-size:12px;font-weight:bold;text-transform:uppercase;margin:.3rem 0;">Thank You!</div>
+      ${r.restaurant?.website ? `<div style="font-size:10px;color:#777;margin-top:.15rem;">${r.restaurant.website}</div>` : ''}
+    </div></body></html>`;
+
+    const w = window.open('', '_blank', 'width=420,height=700');
+    if (!w) return;
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    w.onload = () => { w.print(); w.close(); };
+  }
 
 
   exportFavorites() {

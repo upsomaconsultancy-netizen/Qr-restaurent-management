@@ -56,6 +56,16 @@ const orderSchema = new mongoose.Schema(
       }
     ],
     taxAmount: Number,
+    billTaxes: {
+      type: [
+        new mongoose.Schema(
+          { name: String, rate: Number, type: String, amount: Number },
+          { _id: false }
+        )
+      ],
+      default: []
+    },
+    billTaxAmount: { type: Number, default: 0 },
     total: Number,
 
     paymentStatus: { type: String, enum: ['UNPAID', 'PAID'], default: 'UNPAID' },

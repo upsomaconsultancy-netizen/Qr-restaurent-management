@@ -31,7 +31,8 @@ const menuItemSchema = new mongoose.Schema(
     taxes: [
       {
         name: String,
-        rate: Number
+        rate: { type: Number, default: 0 },
+        type: { type: String, enum: ['PERCENTAGE', 'FLAT'], default: 'PERCENTAGE' }
       }
     ],
     // inventory hook: raw materials consumed per unit sold

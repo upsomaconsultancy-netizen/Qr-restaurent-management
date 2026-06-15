@@ -10,19 +10,18 @@ exports.list = async (req, res) => {
 
 exports.create = async (req, res) => {
   const { name, unit, lowStockThreshold, supplier } = req.body;
-  if (!name) throw ApiError.badRequest('name required');
+  if (!name) throw ApiError.badRequest('Item name is required to create an inventory item.');
   const item = await InventoryItem.create({
     restaurantId: req.user.restaurantId, name, unit, lowStockThreshold, supplier
   });
   res.status(201).json({ success: true, data: item });
 };
 
-/** Record a stock movement (purchase / adjustment / wastage). */
 exports.move = async (req, res) => {
   const { type, qty, cost, note } = req.body;
-  if (!['PURCHASE', 'ADJUSTMENT', 'WASTAGE'].includes(type)) throw ApiError.badRequest('Invalid movement type');
+  if (!['PURCHASE', 'ADJUSTMENT', 'WASTAGE'].includes(type)) throw ApiError.badRequest(`Invalid movement type "${type}". Use PURCHASE, ADJUSTMENT, or WASTAGE.`);
   const item = await InventoryItem.findOne(tenantFilter(req, { _id: req.params.id }));
-  if (!item) throw ApiError.notFound('Inventory item not found');
+  if (!item) throw ApiError.notFound('Inventory item not found. It may have been deleted.');
 
   const signedQty = type === 'WASTAGE' ? -Math.abs(qty) : qty;
   item.currentStock += signedQty;

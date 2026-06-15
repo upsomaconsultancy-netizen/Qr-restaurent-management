@@ -6,14 +6,14 @@ import { AuthService } from '../../core/services/auth.service';
 
 const BLANK_FORM = () => ({
   name: '', code: '', email: '', phone: '', address: '',
-  gstin: '', website: '', serviceChargePercent: 0, taxPercent: 5,
+  gstin: '', website: '', serviceChargePercent: 0, taxPercent: 0,
   plan: 'BASIC', tableLimit: 10,
   ownerName: '', ownerEmail: '', ownerPassword: ''
 });
 
 const BLANK_EDIT = () => ({
   name: '', email: '', phone: '', address: '',
-  gstin: '', website: '', serviceChargePercent: 0, taxPercent: 5,
+  gstin: '', website: '', serviceChargePercent: 0, taxPercent: 0,
   plan: 'BASIC', tableLimit: 10, status: 'ACTIVE'
 });
 
@@ -402,18 +402,20 @@ const BLANK_OUTLET = () => ({ name: '', address: '', phone: '', email: '' });
             @if (editTarget()?.logoUrl) {
               <img [src]="editTarget()!.logoUrl" alt="logo" class="sa-logo-preview">
             } @else {
-              <div class="sa-logo-preview sa-logo-placeholder">{{ editTarget()?.name?.[0] }}</div>
+              <div class="sa-logo-preview sa-logo-placeholder">{{ editTarget()?.name?.[0]?.toUpperCase() }}</div>
             }
             <div class="sa-logo-upload-info">
-              <label class="sa-btn-ghost sa-logo-btn" style="cursor:pointer;">
-                Upload Logo
+              <label class="sa-btn-ghost sa-logo-btn" style="cursor:pointer;display:inline-flex;align-items:center;gap:.4rem;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                {{ logoUploading() ? 'Uploading...' : (editTarget()?.logoUrl ? 'Change Logo' : 'Upload Logo') }}
                 <input type="file" accept="image/jpeg,image/png,image/webp" style="display:none"
+                  [disabled]="logoUploading()"
                   (change)="onLogoSelected($event)">
               </label>
-              <div class="sa-logo-hint">JPG, PNG or WebP · Max 5MB</div>
-              @if (logoUploading()) {
-                <div class="sa-logo-hint" style="color:#4f46e5;">Uploading...</div>
-              }
+              <div class="sa-logo-hint">JPG, PNG or WebP · Max 5MB · Uploads instantly on select</div>
               @if (logoUploadMsg()) {
                 <div class="sa-logo-hint" [style.color]="logoUploadOk() ? '#059669' : '#dc2626'">{{ logoUploadMsg() }}</div>
               }
@@ -1104,10 +1106,19 @@ export class SuperadminComponent implements OnInit {
   create() {
     this.creating.set(true);
     this.msg.set('');
-    this.api.post<any>('/admin/restaurants', this.form).subscribe({
+    this.api.post<{ restaurant: any; owner: any }>('/admin/restaurants', this.form).subscribe({
       next: ({ data }) => {
-        const restaurantId = data.restaurant._id;
+        const restaurantId = data?.restaurant?._id;
         const logoFile = this.createLogoFile();
+
+        const finish = () => {
+          this.form = BLANK_FORM();
+          this.createLogoFile.set(null);
+          this.createLogoPreview.set(null);
+          this.creating.set(false);
+          this.load();
+        };
+
         if (logoFile && restaurantId) {
           const fd = new FormData();
           fd.append('logo', logoFile);
@@ -1115,21 +1126,19 @@ export class SuperadminComponent implements OnInit {
             next: () => {
               this.msg.set('Restaurant created with logo successfully!');
               this.msgType.set('success');
+              finish();
             },
             error: () => {
-              this.msg.set('Restaurant created! But logo upload failed — you can upload it from Edit.');
+              this.msg.set('Restaurant created! Logo upload failed — upload from Edit.');
               this.msgType.set('success');
+              finish();
             }
           });
         } else {
           this.msg.set('Restaurant created successfully!');
           this.msgType.set('success');
+          finish();
         }
-        this.form = BLANK_FORM();
-        this.createLogoFile.set(null);
-        this.createLogoPreview.set(null);
-        this.load();
-        this.creating.set(false);
       },
       error: (e) => {
         this.msg.set(e?.error?.message || 'Failed to create restaurant');
@@ -1146,7 +1155,7 @@ export class SuperadminComponent implements OnInit {
       name: r.name, email: r.email, phone: r.phone || '', address: r.address || '',
       gstin: r.gstin || '', website: r.website || '',
       serviceChargePercent: r.serviceChargePercent || 0,
-      taxPercent: r.taxPercent || 5,
+      taxPercent: r.taxPercent ?? 0,
       plan: r.plan, tableLimit: r.tableLimit, status: r.status
     };
     this.editMsg.set('');
@@ -1156,14 +1165,25 @@ export class SuperadminComponent implements OnInit {
   }
 
   onLogoSelected(event: Event) {
-    const file = (event.target as HTMLInputElement).files?.[0];
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
     if (!file) return;
     const id = this.editTarget()?._id;
     if (!id) return;
+
+    // Show local preview immediately
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      this.editTarget.set({ ...this.editTarget(), logoUrl: e.target?.result as string });
+    };
+    reader.readAsDataURL(file);
+
     const fd = new FormData();
     fd.append('logo', file);
     this.logoUploading.set(true);
     this.logoUploadMsg.set('');
+    input.value = ''; // reset so same file can be re-selected
+
     this.api.patchForm<{ logoUrl: string }>(`/admin/restaurants/${id}/logo`, fd).subscribe({
       next: ({ data }) => {
         this.editTarget.set({ ...this.editTarget(), logoUrl: data.logoUrl });

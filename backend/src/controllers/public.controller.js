@@ -63,14 +63,14 @@ async function getPastOrders(restaurantId, outletId, mobileNumber, excludeSessio
  */
 exports.resolveQr = async (req, res) => {
   const table = await Table.findOne({ qrCode: req.params.qrToken, isDeleted: false, isActive: true }).lean();
-  if (!table) throw ApiError.notFound('Invalid QR code');
+  if (!table) throw ApiError.notFound('This QR code is invalid or has expired. Please ask staff for a new QR code.');
 
   const [restaurant, outlet] = await Promise.all([
     Restaurant.findOne({ _id: table.restaurantId, isDeleted: false, status: 'ACTIVE' }).lean(),
     Outlet.findOne({ _id: table.outletId, isDeleted: false, status: 'ACTIVE' }).lean()
   ]);
-  if (!restaurant) throw ApiError.forbidden('Restaurant unavailable');
-  if (!outlet) throw ApiError.forbidden('This outlet is currently unavailable');
+  if (!restaurant) throw ApiError.forbidden('This restaurant is currently unavailable. Please try again later.');
+  if (!outlet) throw ApiError.forbidden('This outlet is currently closed or deactivated. Please contact staff for assistance.');
 
   // Reuse open table session or create a new one
   let session = await TableSession.findOne({ tableId: table._id, status: 'OPEN' });
@@ -134,12 +134,12 @@ exports.resolveQr = async (req, res) => {
  */
 exports.createCustomerSession = async (req, res) => {
   const { sessionToken, customerName, mobileNumber } = req.body;
-  if (!sessionToken) throw ApiError.badRequest('Missing sessionToken');
-  if (!customerName || !customerName.trim()) throw ApiError.badRequest('Customer name is required');
-  if (!mobileNumber || !/^\d{10}$/.test(mobileNumber.trim())) throw ApiError.badRequest('Valid 10-digit mobile number is required');
+  if (!sessionToken) throw ApiError.badRequest('Session token is missing. Please rescan the QR code.');
+  if (!customerName || !customerName.trim()) throw ApiError.badRequest('Please enter your name to continue.');
+  if (!mobileNumber || !/^\d{10}$/.test(mobileNumber.trim())) throw ApiError.badRequest('Please enter a valid 10-digit mobile number.');
 
   const tableSession = await TableSession.findOne({ sessionToken, status: 'OPEN' });
-  if (!tableSession) throw ApiError.unauthorized('Session expired — please rescan the QR code');
+  if (!tableSession) throw ApiError.unauthorized('Your session has expired. Please rescan the QR code to start a new session.');
 
   const name = customerName.trim();
   const mobile = mobileNumber.trim();
@@ -165,7 +165,7 @@ exports.createCustomerSession = async (req, res) => {
     isActive: true
   });
   if (table && activeSeats >= table.capacity) {
-    throw ApiError.badRequest('TABLE_FULL: This table is at capacity. Please take another seat.');
+    throw ApiError.badRequest('This table is at full capacity. Please take another available seat or ask a waiter for help.');
   }
 
   const token = CustomerSession.generateToken();
@@ -196,18 +196,18 @@ exports.createCustomerSession = async (req, res) => {
 exports.placeOrder = async (req, res) => {
   const { sessionToken, customerToken, orderType = 'DINING', items } = req.body;
 
-  if (!Array.isArray(items) || !items.length) throw ApiError.badRequest('No items in order');
-  if (orderType === 'DELIVERY') throw ApiError.badRequest('Home delivery is coming soon');
-  if (!customerToken) throw ApiError.badRequest('Customer identity token missing');
+  if (!Array.isArray(items) || !items.length) throw ApiError.badRequest('Your cart is empty. Please add at least one item before placing an order.');
+  if (orderType === 'DELIVERY') throw ApiError.badRequest('Home delivery is not available yet. Please choose Dine In or Takeaway.');
+  if (!customerToken) throw ApiError.badRequest('Please provide your name and mobile number before placing an order.');
 
   const tableSession = await TableSession.findOne({ sessionToken, status: 'OPEN' });
-  if (!tableSession) throw ApiError.unauthorized('Session expired — please rescan the QR code');
+  if (!tableSession) throw ApiError.unauthorized('Your session has expired. Please rescan the QR code to start a new session.');
 
   const cs = await CustomerSession.findOne({ sessionToken: customerToken, sessionId: tableSession._id });
-  if (!cs) throw ApiError.unauthorized('Invalid customer session — please provide your name and mobile');
+  if (!cs) throw ApiError.unauthorized('Your identity could not be verified. Please enter your name and mobile number again.');
 
   const restaurant = await Restaurant.findOne({ _id: tableSession.restaurantId, status: 'ACTIVE', isDeleted: false }).lean();
-  if (!restaurant) throw ApiError.forbidden('Restaurant unavailable');
+  if (!restaurant) throw ApiError.forbidden('This restaurant is currently unavailable. Please try again later.');
 
   // Server-side pricing — never trust client prices; fetch from outlet-scoped menu
   const orderItems = [];
@@ -218,13 +218,13 @@ exports.placeOrder = async (req, res) => {
       isDeleted: false,
       isAvailable: true
     }).lean();
-    if (!mi) throw ApiError.badRequest('One of the items is no longer available');
+    if (!mi) throw ApiError.badRequest('One or more items in your cart are no longer available. Please refresh the menu and try again.');
 
     let unitPrice = mi.price;
     let variant;
     if (line.variantId) {
       variant = mi.variants.find((v) => v._id.toString() === line.variantId);
-      if (!variant) throw ApiError.badRequest(`Invalid variant for ${mi.name}`);
+      if (!variant) throw ApiError.badRequest(`The selected variant for "${mi.name}" is no longer available. Please reselect and try again.`);
       unitPrice = variant.price;
     }
     const addons = (line.addonIds || [])
@@ -281,7 +281,7 @@ exports.myBill = async (req, res) => {
   const cs = await CustomerSession.findOne({ sessionToken: req.params.customerToken })
     .populate('tableId', 'number name')
     .lean();
-  if (!cs) throw ApiError.notFound('Customer session not found');
+  if (!cs) throw ApiError.notFound('Session not found. Please rescan the QR code.');
 
   const [tableSession, bill, pastOrders] = await Promise.all([
     TableSession.findById(cs.sessionId).lean(),
@@ -311,15 +311,15 @@ exports.customerReceipt = async (req, res) => {
     .populate('tableId', 'number name')
     .populate('restaurantId')
     .lean();
-  if (!cs) throw ApiError.notFound('Customer session not found');
+  if (!cs) throw ApiError.notFound('Session not found. Please rescan the QR code.');
 
   const orders = await Order.find({ customerSessionId: cs._id, isDeleted: false }).sort('createdAt').lean();
-  if (!orders.length) throw ApiError.notFound('No orders found');
+  if (!orders.length) throw ApiError.notFound('No orders found for this session.');
 
   const hasUnpaid = orders.some(
     (o) => o.status !== 'CANCELLED' && o.paymentStatus !== 'PAID'
   );
-  if (hasUnpaid) throw ApiError.conflict('Receipt is available only after payment is completed');
+  if (hasUnpaid) throw ApiError.conflict('Your receipt will be available after payment is completed. Please ask staff to process your payment.');
 
   const restaurant = cs.restaurantId;
   const bill = await customerBill(cs._id);
@@ -366,6 +366,8 @@ exports.customerReceipt = async (req, res) => {
         subtotal: bill.subtotal,
         taxes: bill.taxes,
         taxAmount: bill.taxAmount,
+        billTaxes: bill.billTaxes || [],
+        billTaxAmount: bill.billTaxAmount || 0,
         serviceCharge,
         serviceChargePercent: restaurant.serviceChargePercent || 0,
         grandTotal: +(bill.total + serviceCharge).toFixed(2)

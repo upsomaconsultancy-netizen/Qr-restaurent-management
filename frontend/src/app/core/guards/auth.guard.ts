@@ -7,6 +7,14 @@ export const authGuard: CanActivateFn = () => {
   return auth.isLoggedIn() ? true : inject(Router).parseUrl('/login');
 };
 
+/** Redirects already-logged-in users away from login page to their home. */
+export const guestGuard: CanActivateFn = () => {
+  const auth = inject(AuthService);
+  const user = auth.user();
+  if (!auth.isLoggedIn() || !user) return true;
+  return inject(Router).parseUrl(auth.homeFor(user.role));
+};
+
 export function roleGuard(roles: string[]): CanActivateFn {
   return () => {
     const auth = inject(AuthService);

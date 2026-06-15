@@ -11,10 +11,8 @@ async function tableAvailability(restaurantId) {
   const restaurant = await Restaurant.findById(restaurantId).lean();
   const restaurantLimit = restaurant.tableLimit;
 
-  // All non-deleted outlets
   const outlets = await Outlet.find({ restaurantId, isDeleted: false }).lean();
 
-  // Tables already created per outlet (actual rows in DB)
   const tableCounts = await Table.aggregate([
     { $match: { restaurantId: restaurant._id, isDeleted: false } },
     { $group: { _id: '$outletId', count: { $sum: 1 } } }
@@ -22,11 +20,8 @@ async function tableAvailability(restaurantId) {
   const tableCountMap = {};
   tableCounts.forEach(r => { tableCountMap[String(r._id)] = r.count; });
 
-  // Total allocated slots (sum of per-outlet tableLimits)
   const totalAllocated = outlets.reduce((s, o) => s + (o.tableLimit || 0), 0);
-  // Total actual tables created across all outlets
   const totalUsed = Object.values(tableCountMap).reduce((s, c) => s + c, 0);
-  // Remaining = how many more tables can be created restaurant-wide
   const remaining = restaurantLimit - totalUsed;
 
   return {
@@ -49,7 +44,6 @@ exports.tableAvailability = async (req, res) => {
 };
 
 exports.list = async (req, res) => {
-  // WAITER/KITCHEN see only their assigned outlet; OWNER/MANAGER see all
   const filter = { restaurantId: req.user.restaurantId, isDeleted: false };
   if (['WAITER', 'KITCHEN'].includes(req.user.role) && req.user.outletId) {
     filter._id = req.user.outletId;
@@ -57,7 +51,6 @@ exports.list = async (req, res) => {
 
   let outlets = await Outlet.find(filter).sort({ createdAt: 1 }).lean();
 
-  // Graceful fallback for OWNER with no outlets: auto-create Main Branch
   if (outlets.length === 0 && ['OWNER', 'MANAGER'].includes(req.user.role)) {
     const restaurant = await Restaurant.findById(req.user.restaurantId).lean();
     if (restaurant) {
@@ -79,7 +72,7 @@ exports.list = async (req, res) => {
 
 exports.create = async (req, res) => {
   const { name, address, phone, email, tableLimit, staffAccounts } = req.body;
-  if (!name || !address) throw ApiError.badRequest('name and address are required');
+  if (!name || !address) throw ApiError.badRequest('Outlet name and address are required.');
 
   const limit = parseInt(tableLimit, 10) || 0;
 
@@ -87,8 +80,8 @@ exports.create = async (req, res) => {
     const avail = await tableAvailability(req.user.restaurantId);
     if (limit > avail.remaining) {
       throw ApiError.badRequest(
-        `Only ${avail.remaining} table slot(s) available for this restaurant. ` +
-        `Reduce the table limit or contact platform admin to increase the restaurant quota.`
+        `Only ${avail.remaining} table slot(s) are available for your restaurant plan. ` +
+        `Please reduce the table limit or contact the platform admin to upgrade your plan.`
       );
     }
   }
@@ -99,7 +92,6 @@ exports.create = async (req, res) => {
   });
   audit({ req, restaurantId: req.user.restaurantId, action: 'OUTLET_CREATED', entity: 'Outlet', entityId: outlet._id });
 
-  // Optionally create staff accounts for this outlet
   const createdStaff = [];
   if (Array.isArray(staffAccounts) && staffAccounts.length > 0) {
     for (const s of staffAccounts) {
@@ -107,7 +99,7 @@ exports.create = async (req, res) => {
       const role = ['WAITER', 'KITCHEN', 'MANAGER'].includes(s.role) ? s.role : 'WAITER';
       const user = new User({ restaurantId: req.user.restaurantId, outletId: outlet._id, name: s.name, email: s.email, role });
       await user.setPassword(s.password);
-      await user.save().catch(() => {}); // skip duplicates silently
+      await user.save().catch(() => {});
       createdStaff.push({ name: s.name, email: s.email, role });
     }
   }
@@ -121,7 +113,7 @@ exports.update = async (req, res) => {
     restaurantId: req.user.restaurantId,
     isDeleted: false
   });
-  if (!outlet) throw ApiError.notFound('Outlet not found');
+  if (!outlet) throw ApiError.notFound('Outlet not found. It may have been deleted.');
 
   const { name, address, phone, email, tableLimit } = req.body;
 
@@ -131,18 +123,17 @@ exports.update = async (req, res) => {
 
     if (newLimit < tablesCreated) {
       throw ApiError.badRequest(
-        `Cannot set table limit to ${newLimit} — this outlet already has ${tablesCreated} table(s) created.`
+        `Cannot set table limit to ${newLimit} — this outlet already has ${tablesCreated} table(s) created. Please delete some tables first.`
       );
     }
 
-    // Check against restaurant-wide remaining (exclude this outlet's current allocation)
     const avail = await tableAvailability(req.user.restaurantId);
     const currentAlloc = outlet.tableLimit || 0;
-    const freeSlots = avail.remaining + currentAlloc; // add back this outlet's current claim
+    const freeSlots = avail.remaining + currentAlloc;
     if (newLimit > freeSlots) {
       throw ApiError.badRequest(
-        `Only ${freeSlots} table slot(s) available for this restaurant. ` +
-        `Contact platform admin to increase the restaurant quota.`
+        `Only ${freeSlots} table slot(s) are available for your restaurant plan. ` +
+        `Contact the platform admin to increase the restaurant quota.`
       );
     }
     outlet.tableLimit = newLimit;
@@ -154,7 +145,6 @@ exports.update = async (req, res) => {
   if (email !== undefined) outlet.email = email;
   await outlet.save();
 
-  // Handle staff updates: update existing (by email) or create new
   const { staffAccounts } = req.body;
   const updatedStaff = [];
   if (Array.isArray(staffAccounts) && staffAccounts.length > 0) {
@@ -163,7 +153,6 @@ exports.update = async (req, res) => {
       const role = ['WAITER', 'KITCHEN', 'MANAGER'].includes(s.role) ? s.role : 'WAITER';
       let user = await User.findOne({ email: s.email, restaurantId: req.user.restaurantId, isDeleted: false });
       if (user) {
-        // Update existing staff
         if (s.name) user.name = s.name;
         if (s.role) user.role = role;
         user.outletId = outlet._id;
@@ -171,7 +160,6 @@ exports.update = async (req, res) => {
         await user.save();
         updatedStaff.push({ name: user.name, email: user.email, role: user.role, action: 'updated' });
       } else if (s.name && s.password && s.password.length >= 8) {
-        // Create new staff
         const newUser = new User({ restaurantId: req.user.restaurantId, outletId: outlet._id, name: s.name, email: s.email, role });
         await newUser.setPassword(s.password);
         await newUser.save().catch(() => {});
@@ -190,7 +178,7 @@ exports.toggleStatus = async (req, res) => {
     restaurantId: req.user.restaurantId,
     isDeleted: false
   });
-  if (!outlet) throw ApiError.notFound('Outlet not found');
+  if (!outlet) throw ApiError.notFound('Outlet not found. It may have been deleted.');
 
   outlet.status = outlet.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
   await outlet.save();
@@ -205,7 +193,7 @@ exports.remove = async (req, res) => {
     restaurantId: req.user.restaurantId,
     isDeleted: false
   });
-  if (!outlet) throw ApiError.notFound('Outlet not found');
+  if (!outlet) throw ApiError.notFound('Outlet not found. It may have been deleted.');
 
   outlet.isDeleted = true;
   outlet.status = 'INACTIVE';
@@ -222,7 +210,7 @@ exports.getStats = async (req, res) => {
     restaurantId: req.user.restaurantId,
     isDeleted: false
   }).lean();
-  if (!outlet) throw ApiError.notFound('Outlet not found');
+  if (!outlet) throw ApiError.notFound('Outlet not found. It may have been deleted.');
 
   const [tableCount, orderStats] = await Promise.all([
     Table.countDocuments({ outletId, isDeleted: false }),

@@ -13,18 +13,12 @@ const { consumeForOrder } = require('../services/inventory.service');
 const { emitToOutlet, emitToOutletWaiters, emitToCustomer, emitToStaff } = require('../sockets');
 const { audit } = require('../utils/audit');
 
-// Full kitchen→waiter→payment workflow
 const ORDER_FLOW = ['PENDING', 'ACCEPTED', 'PREPARING', 'DONE', 'READY_TO_SERVE', 'SERVED', 'PAYMENT_COMPLETED', 'CLOSED'];
 
-// Kitchen may only advance up to DONE (accept, prepare, mark done)
 const KITCHEN_ALLOWED_STATUSES = ['ACCEPTED', 'PREPARING', 'DONE', 'CANCELLED'];
-// Waiter can mark READY_TO_SERVE and SERVED; cannot complete payment or close
 const WAITER_ALLOWED_STATUSES = ['READY_TO_SERVE', 'SERVED'];
-// Manager/Owner complete payment and close orders
 const MANAGER_OWNER_ONLY_STATUSES = ['PAYMENT_COMPLETED', 'CLOSED'];
-// Statuses kitchen is explicitly forbidden from setting
 const KITCHEN_FORBIDDEN_STATUSES = ['READY_TO_SERVE', 'SERVED', 'PAYMENT_COMPLETED', 'CLOSED'];
-// Statuses only manager/owner can set (waiter cannot)
 const WAITER_FORBIDDEN_STATUSES = ['PAYMENT_COMPLETED', 'CLOSED'];
 
 exports.list = async (req, res) => {
@@ -40,7 +34,6 @@ exports.list = async (req, res) => {
   res.json({ success: true, data: orders });
 };
 
-/** Kitchen queue: active kitchen tasks only (up to DONE). */
 exports.kitchenQueue = async (req, res) => {
   const orders = await Order.find(
     tenantFilter(req, { status: { $in: ['PENDING', 'ACCEPTED', 'PREPARING', 'DONE'] } })
@@ -51,7 +44,6 @@ exports.kitchenQueue = async (req, res) => {
   res.json({ success: true, data: orders });
 };
 
-/** Waiter queue: orders ready to serve (kitchen marked DONE → READY_TO_SERVE). */
 exports.waiterQueue = async (req, res) => {
   const orders = await Order.find(
     tenantFilter(req, { status: { $in: ['READY_TO_SERVE', 'SERVED'] } })
@@ -62,29 +54,26 @@ exports.waiterQueue = async (req, res) => {
   res.json({ success: true, data: orders });
 };
 
-/** Kitchen / staff moves an order through the status flow. */
 exports.updateStatus = async (req, res) => {
   const { status } = req.body;
-  if (!ORDER_FLOW.includes(status) && status !== 'CANCELLED') throw ApiError.badRequest('Invalid status');
+  if (!ORDER_FLOW.includes(status) && status !== 'CANCELLED') throw ApiError.badRequest(`"${status}" is not a valid order status.`);
 
   const role = req.user.role;
 
-  // Kitchen can only: ACCEPTED, PREPARING, DONE, CANCELLED
   if (role === 'KITCHEN' && KITCHEN_FORBIDDEN_STATUSES.includes(status)) {
-    throw ApiError.forbidden('Kitchen staff can only accept, prepare, or mark orders done. Notify the waiter to serve.');
+    throw ApiError.forbidden('Kitchen staff can only accept, start preparing, or mark orders as done. Please notify the waiter to serve the order.');
   }
 
-  // Waiter can only: READY_TO_SERVE, SERVED (cannot complete payment or close)
   if (role === 'WAITER' && WAITER_FORBIDDEN_STATUSES.includes(status)) {
-    throw ApiError.forbidden('Waiters cannot complete payment or close orders. Please notify the outlet manager.');
+    throw ApiError.forbidden('Waiters cannot process payments or close orders. Please notify the outlet manager.');
   }
   if (role === 'WAITER' && !WAITER_ALLOWED_STATUSES.includes(status) && status !== 'CANCELLED') {
-    throw ApiError.forbidden('Waiters can only mark orders as ready to serve or served.');
+    throw ApiError.forbidden('Waiters can only mark orders as "Ready to Serve" or "Served".');
   }
 
   const user = await User.findById(req.user.id).lean();
   const order = await Order.findOne(tenantFilter(req, { _id: req.params.id }));
-  if (!order) throw ApiError.notFound('Order not found');
+  if (!order) throw ApiError.notFound('Order not found. It may have been removed or you may not have access.');
 
   const prev = order.status;
   order.status = status;
@@ -96,7 +85,6 @@ exports.updateStatus = async (req, res) => {
     consumeForOrder(order).catch((e) => console.error('[inventory]', e.message));
   }
 
-  // Kitchen marks DONE → advance to READY_TO_SERVE and notify waiters immediately
   if (status === 'DONE') {
     order.status = 'READY_TO_SERVE';
     const [table, outlet] = await Promise.all([
@@ -132,7 +120,6 @@ exports.updateStatus = async (req, res) => {
       }
     }
 
-    // Release seat: mark customer session inactive
     if (order.customerSessionId) {
       await CustomerSession.updateOne(
         { _id: order.customerSessionId },
@@ -151,7 +138,6 @@ exports.updateStatus = async (req, res) => {
         item.statusUpdatedBy = req.user.id;
         item.statusUpdatedByName = user?.name;
         item.statusUpdatedByEmail = user?.email;
-        // Map order-level status to item status where applicable
         if (['ACCEPTED', 'PREPARING'].includes(status)) {
           item.status = status;
         }
@@ -171,24 +157,23 @@ exports.updateStatus = async (req, res) => {
   res.json({ success: true, data: order });
 };
 
-/** Update a single line item (kitchen marks one dish done, etc.). */
 exports.updateItemStatus = async (req, res) => {
   const { status } = req.body;
   const role = req.user.role;
 
   if (role === 'KITCHEN' && KITCHEN_FORBIDDEN_STATUSES.includes(status)) {
-    throw ApiError.forbidden('Kitchen staff cannot mark items as served. Please notify the waiter.');
+    throw ApiError.forbidden('Kitchen staff cannot mark items as served. Please notify the waiter to serve this item.');
   }
   if (role === 'WAITER' && WAITER_FORBIDDEN_STATUSES.includes(status)) {
-    throw ApiError.forbidden('Waiters cannot complete payment or close orders.');
+    throw ApiError.forbidden('Waiters cannot process payments or close orders. Please notify the outlet manager.');
   }
 
   const user = await User.findById(req.user.id).lean();
   const order = await Order.findOne(tenantFilter(req, { _id: req.params.id }));
-  if (!order) throw ApiError.notFound('Order not found');
+  if (!order) throw ApiError.notFound('Order not found. It may have been removed or you may not have access.');
   const item = order.items.id(req.params.itemId);
-  if (!item) throw ApiError.notFound('Order item not found');
-  if (item.locked) throw ApiError.conflict('Item already served and locked');
+  if (!item) throw ApiError.notFound('Order item not found. It may have been removed.');
+  if (item.locked) throw ApiError.conflict('This item has already been served and cannot be modified.');
 
   item.status = status;
   item.statusUpdatedBy = req.user.id;
@@ -220,10 +205,10 @@ exports.orderReceipt = async (req, res) => {
       .lean(),
     Restaurant.findById(req.user.restaurantId).lean()
   ]);
-  if (!order) throw ApiError.notFound('Order not found');
+  if (!order) throw ApiError.notFound('Order not found. It may have been removed or you may not have access.');
   const terminalStatuses = ['SERVED', 'PAYMENT_COMPLETED', 'CLOSED', 'COMPLETED'];
   if (order.paymentStatus !== 'PAID' && !terminalStatuses.includes(order.status)) {
-    throw ApiError.conflict('Receipt is available only after the order is served or paid');
+    throw ApiError.conflict('Receipt is available only after the order has been served or payment is completed.');
   }
 
   res.json({
@@ -247,23 +232,17 @@ exports.orderReceipt = async (req, res) => {
   });
 };
 
-/**
- * Waiter/Manager/Owner marks an order as payment completed.
- * Kitchen staff are not permitted to collect payment.
- */
 exports.markPaid = async (req, res) => {
   const role = req.user.role;
-  if (role === 'KITCHEN') throw ApiError.forbidden('Kitchen staff cannot process payments.');
+  if (role === 'KITCHEN') throw ApiError.forbidden('Kitchen staff cannot process payments. Please ask the waiter or manager.');
 
   const { sessionId, orderId, method = 'CASH', reference } = req.body;
-  if (!['CASH', 'UPI', 'CARD', 'OTHER'].includes(method)) throw ApiError.badRequest('Invalid payment method');
-  if (!orderId) throw ApiError.badRequest('Missing orderId');
+  if (!['CASH', 'UPI', 'CARD', 'OTHER'].includes(method)) throw ApiError.badRequest(`Invalid payment method "${method}". Use CASH, UPI, CARD, or OTHER.`);
+  if (!orderId) throw ApiError.badRequest('Order ID is required to process payment.');
 
-  // Use tenantFilter to enforce outletId isolation — WAITER/KITCHEN scoped to their outlet,
-  // MANAGER scoped to their outlet, OWNER can see all or filter by ?outletId
   const order = await Order.findOne(tenantFilter(req, { _id: orderId }));
-  if (!order) throw ApiError.notFound('Order not found');
-  if (order.paymentStatus === 'PAID') throw ApiError.conflict('Order already paid');
+  if (!order) throw ApiError.notFound('Order not found. It may have been removed or you may not have access.');
+  if (order.paymentStatus === 'PAID') throw ApiError.conflict('This order has already been paid.');
 
   const session = sessionId
     ? await TableSession.findOne({ _id: sessionId, restaurantId: req.user.restaurantId, outletId: order.outletId })
@@ -316,9 +295,6 @@ exports.markPaid = async (req, res) => {
   res.json({ success: true, data: payment });
 };
 
-/**
- * Manager/Owner closes an order after payment is completed.
- */
 exports.closeOrder = async (req, res) => {
   const role = req.user.role;
   if (!['MANAGER', 'OWNER'].includes(role)) {
@@ -326,9 +302,9 @@ exports.closeOrder = async (req, res) => {
   }
 
   const order = await Order.findOne(tenantFilter(req, { _id: req.params.id }));
-  if (!order) throw ApiError.notFound('Order not found');
-  if (order.status === 'CLOSED') throw ApiError.conflict('Order is already closed');
-  if (order.paymentStatus !== 'PAID') throw ApiError.conflict('Order must be paid before closing');
+  if (!order) throw ApiError.notFound('Order not found. It may have been removed or you may not have access.');
+  if (order.status === 'CLOSED') throw ApiError.conflict('This order is already closed.');
+  if (order.paymentStatus !== 'PAID') throw ApiError.conflict('Payment must be completed before closing this order.');
 
   const prev = order.status;
   const user = await User.findById(req.user.id).lean();

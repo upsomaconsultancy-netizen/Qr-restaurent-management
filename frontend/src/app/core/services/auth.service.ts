@@ -15,8 +15,8 @@ export class AuthService {
   private api = inject(ApiService);
   private router = inject(Router);
 
-  readonly user = signal<SessionUser | null>(this.restore());
-  readonly token = signal<string | null>(sessionStorage.getItem('ros_token'));
+  readonly user  = signal<SessionUser | null>(this.restoreUser());
+  readonly token = signal<string | null>(localStorage.getItem('ros_token'));
   readonly isLoggedIn = computed(() => !!this.token());
 
   login(email: string, password: string) {
@@ -24,27 +24,23 @@ export class AuthService {
       tap(({ data }) => {
         this.token.set(data.accessToken);
         this.user.set(data.user);
-        sessionStorage.setItem('ros_token', data.accessToken);
-        sessionStorage.setItem('ros_user', JSON.stringify(data.user));
+        localStorage.setItem('ros_token', data.accessToken);
+        localStorage.setItem('ros_user', JSON.stringify(data.user));
       })
     );
   }
 
   logout() {
     this.api.post('/auth/logout', {}).subscribe();
-    sessionStorage.clear();
-    this.token.set(null);
-    this.user.set(null);
+    this.clearSession();
     this.router.navigateByUrl('/login');
   }
 
   /** Force logout with a message shown on the login screen (outlet deactivated etc.) */
   logoutWithMessage(message: string) {
     this.api.post('/auth/logout', {}).subscribe();
-    sessionStorage.clear();
+    this.clearSession();
     sessionStorage.setItem('ros_logout_msg', message);
-    this.token.set(null);
-    this.user.set(null);
     this.router.navigateByUrl('/login');
   }
 
@@ -61,7 +57,14 @@ export class AuthService {
     return '/dashboard';
   }
 
-  private restore(): SessionUser | null {
-    try { return JSON.parse(sessionStorage.getItem('ros_user') || 'null'); } catch { return null; }
+  private clearSession() {
+    localStorage.removeItem('ros_token');
+    localStorage.removeItem('ros_user');
+    this.token.set(null);
+    this.user.set(null);
+  }
+
+  private restoreUser(): SessionUser | null {
+    try { return JSON.parse(localStorage.getItem('ros_user') || 'null'); } catch { return null; }
   }
 }

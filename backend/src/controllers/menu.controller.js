@@ -5,15 +5,11 @@ const ApiError = require('../utils/ApiError');
 const { tenantMenuFilter } = require('../middleware/tenant');
 const { uploadImage, deleteImage } = require('../config/cloudinary');
 
-// For OWNER: resolve their outletId = Main Branch (first created outlet for this restaurant)
 async function ownerOutletId(restaurantId) {
   const outlet = await Outlet.findOne({ restaurantId, isDeleted: false }).sort({ createdAt: 1 }).lean();
   return outlet ? outlet._id : null;
 }
 
-// Get the outletId to use when saving menu items/categories:
-// - WAITER/KITCHEN/MANAGER: their own outlet from JWT
-// - OWNER: Main Branch outlet
 async function resolveOutletId(req) {
   if (req.user.outletId) return req.user.outletId;
   return ownerOutletId(req.user.restaurantId);
@@ -21,7 +17,7 @@ async function resolveOutletId(req) {
 
 // ---- Categories ----
 exports.listCategories = async (req, res) => {
-  const cats = await Category.find(await await tenantMenuFilter(req)).sort('sortOrder').lean();
+  const cats = await Category.find(await tenantMenuFilter(req)).sort('sortOrder').lean();
   res.json({ success: true, data: cats });
 };
 
@@ -46,7 +42,7 @@ exports.deleteCategory = async (req, res) => {
   });
 
   if (itemCount > 0) {
-    throw ApiError.conflict('Category has items and cannot be deleted');
+    throw ApiError.conflict(`This category has ${itemCount} item(s) and cannot be deleted. Please move or delete all items in this category first.`);
   }
 
   const removed = await Category.findOneAndDelete({
@@ -54,7 +50,7 @@ exports.deleteCategory = async (req, res) => {
     _id: req.params.id
   });
 
-  if (!removed) throw ApiError.notFound('Category not found');
+  if (!removed) throw ApiError.notFound('Category not found. It may have already been deleted.');
   res.json({ success: true });
 };
 
@@ -68,7 +64,7 @@ exports.listItems = async (req, res) => {
 
 exports.createItem = async (req, res) => {
   const { name, price, categoryId } = req.body;
-  if (!name || !price || !categoryId) throw ApiError.badRequest('name, price, categoryId required');
+  if (!name || !price || !categoryId) throw ApiError.badRequest('Item name, price and category are required.');
 
   const outletId = await resolveOutletId(req);
   const item = new MenuItem({
@@ -97,8 +93,8 @@ exports.createItem = async (req, res) => {
 };
 
 exports.updateItem = async (req, res) => {
-  const item = await MenuItem.findOne(tenantMenuFilter(req, { _id: req.params.id }));
-  if (!item) throw ApiError.notFound('Item not found');
+  const item = await MenuItem.findOne(await tenantMenuFilter(req, { _id: req.params.id }));
+  if (!item) throw ApiError.notFound('Menu item not found. It may have already been deleted.');
 
   const fields = ['name', 'description', 'price', 'foodType', 'spicyLevel', 'prepTimeMinutes', 'categoryId', 'isAvailable'];
   for (const f of fields) if (req.body[f] !== undefined) item[f] = req.body[f];
@@ -119,10 +115,10 @@ exports.updateItem = async (req, res) => {
 
 exports.deleteItem = async (req, res) => {
   const item = await MenuItem.findOneAndUpdate(
-    tenantMenuFilter(req, { _id: req.params.id }),
+    await tenantMenuFilter(req, { _id: req.params.id }),
     { isDeleted: true }
   );
-  if (!item) throw ApiError.notFound('Item not found');
+  if (!item) throw ApiError.notFound('Menu item not found. It may have already been deleted.');
   res.json({ success: true });
 };
 

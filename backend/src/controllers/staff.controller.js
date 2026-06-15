@@ -10,22 +10,17 @@ function allowedRoles(req) {
   return req.user.role === 'OWNER' ? MANAGEABLE_BY_OWNER : MANAGEABLE_BY_MANAGER;
 }
 
-// Resolve which outlet to assign when no outletId provided:
-// - MANAGER: their own outlet (from JWT)
-// - OWNER: find the Main Branch (first/oldest outlet)
 async function resolveOutletId(req, providedOutletId) {
   if (providedOutletId) {
     const outlet = await Outlet.findOne({ _id: providedOutletId, restaurantId: req.user.restaurantId, isDeleted: false });
-    if (!outlet) throw ApiError.notFound('Outlet not found');
+    if (!outlet) throw ApiError.notFound('The selected outlet was not found. Please refresh and try again.');
     return providedOutletId;
   }
-  // MANAGER has their own outletId in JWT
   if (req.user.role === 'MANAGER' && req.user.outletId) {
     return req.user.outletId;
   }
-  // OWNER: auto-assign to first active outlet (Main Branch)
   const outlet = await Outlet.findOne({ restaurantId: req.user.restaurantId, isDeleted: false, status: 'ACTIVE' }).sort({ createdAt: 1 });
-  if (!outlet) throw ApiError.badRequest('No active outlet found. Create an outlet first.');
+  if (!outlet) throw ApiError.badRequest('No active outlet found. Please create an outlet first before adding staff.');
   return outlet._id;
 }
 
@@ -33,7 +28,6 @@ exports.list = async (req, res) => {
   const roles = req.user.role === 'OWNER' ? MANAGEABLE_BY_OWNER : MANAGEABLE_BY_MANAGER;
   const filter = { restaurantId: req.user.restaurantId, role: { $in: roles }, isDeleted: false };
 
-  // MANAGER sees only their outlet's staff; OWNER sees all (or filtered by ?outletId)
   if (req.user.role === 'MANAGER' && req.user.outletId) {
     filter.outletId = req.user.outletId;
   } else if (req.query.outletId) {
@@ -47,22 +41,20 @@ exports.list = async (req, res) => {
 exports.create = async (req, res) => {
   const { name, email, password, role } = req.body;
   const allowed = allowedRoles(req);
-  if (!allowed.includes(role)) throw ApiError.badRequest(`Role must be one of: ${allowed.join(', ')}`);
-  if (!name || !email || !password || password.length < 8) throw ApiError.badRequest('name, email and 8+ char password required');
+  if (!allowed.includes(role)) throw ApiError.badRequest(`Invalid role "${role}". You can assign: ${allowed.join(', ')}.`);
+  if (!name || !email || !password || password.length < 8) throw ApiError.badRequest('Name, email and a password of at least 8 characters are required.');
 
-  // Auto-resolve outlet for WAITER/KITCHEN — no manual outletId needed from Owner/Manager
   let assignedOutletId = null;
   if (['WAITER', 'KITCHEN'].includes(role)) {
     assignedOutletId = await resolveOutletId(req, req.body.outletId);
   } else if (role === 'MANAGER') {
-    // MANAGER can be outlet-scoped or restaurant-wide (null)
     assignedOutletId = req.body.outletId || null;
   }
 
   const user = new User({ restaurantId: req.user.restaurantId, outletId: assignedOutletId, name, email, role });
   await user.setPassword(password);
   await user.save().catch((e) => {
-    if (e.code === 11000) throw ApiError.conflict('Email already in use');
+    if (e.code === 11000) throw ApiError.conflict(`Email "${email}" is already registered. Please use a different email.`);
     throw e;
   });
   audit({ req, action: 'STAFF_CREATED', entity: 'User', entityId: user._id, meta: { role } });
@@ -72,10 +64,10 @@ exports.create = async (req, res) => {
 exports.update = async (req, res) => {
   const { name, email, password, role, outletId } = req.body;
   const user = await User.findOne({ _id: req.params.id, restaurantId: req.user.restaurantId, isDeleted: false });
-  if (!user) throw ApiError.notFound('Staff member not found');
-  if (user.role === 'OWNER') throw ApiError.forbidden('Cannot update the owner');
+  if (!user) throw ApiError.notFound('Staff member not found. They may have been removed.');
+  if (user.role === 'OWNER') throw ApiError.forbidden('The restaurant owner account cannot be modified from here.');
   const allowed = allowedRoles(req);
-  if (role && !allowed.includes(role)) throw ApiError.badRequest(`Role must be one of: ${allowed.join(', ')}`);
+  if (role && !allowed.includes(role)) throw ApiError.badRequest(`Invalid role "${role}". You can assign: ${allowed.join(', ')}.`);
 
   if (name) user.name = name;
   if (email) user.email = email;
@@ -85,7 +77,7 @@ exports.update = async (req, res) => {
   if (outletId !== undefined) {
     if (outletId) {
       const outlet = await Outlet.findOne({ _id: outletId, restaurantId: req.user.restaurantId, isDeleted: false });
-      if (!outlet) throw ApiError.notFound('Outlet not found');
+      if (!outlet) throw ApiError.notFound('The selected outlet was not found. Please refresh and try again.');
       user.outletId = outletId;
     } else {
       user.outletId = null;
@@ -93,7 +85,7 @@ exports.update = async (req, res) => {
   }
 
   await user.save().catch((e) => {
-    if (e.code === 11000) throw ApiError.conflict('Email already in use');
+    if (e.code === 11000) throw ApiError.conflict(`Email "${email}" is already registered. Please use a different email.`);
     throw e;
   });
 
@@ -103,8 +95,8 @@ exports.update = async (req, res) => {
 
 exports.toggleActive = async (req, res) => {
   const user = await User.findOne({ _id: req.params.id, restaurantId: req.user.restaurantId, isDeleted: false });
-  if (!user) throw ApiError.notFound('Staff member not found');
-  if (user.role === 'OWNER') throw ApiError.forbidden('Cannot deactivate the owner');
+  if (!user) throw ApiError.notFound('Staff member not found. They may have been removed.');
+  if (user.role === 'OWNER') throw ApiError.forbidden('The restaurant owner account cannot be deactivated.');
   user.isActive = !user.isActive;
   await user.save();
   res.json({ success: true, data: { id: user._id, isActive: user.isActive } });

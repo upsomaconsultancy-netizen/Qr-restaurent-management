@@ -14,7 +14,7 @@ export interface MenuItem {
   imagePublicId?: string;
   variants: any[];
   addons: any[];
-  taxes?: { name: string; rate: number }[];
+  taxes?: { name: string; rate: number; type?: 'PERCENTAGE' | 'FLAT' }[];
   isAvailable?: boolean;
   isDeleted?: boolean;
 }

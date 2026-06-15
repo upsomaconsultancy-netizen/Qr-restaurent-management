@@ -17,6 +17,16 @@ const restaurantSchema = new mongoose.Schema(
     website:    String,
     serviceChargePercent: { type: Number, default: 0 },
 
+    // Bill-level taxes applied once on the full subtotal (not per item)
+    billTaxes: [
+      {
+        name:  { type: String, required: true },
+        rate:  { type: Number, required: true, default: 0 },
+        type:  { type: String, enum: ['PERCENTAGE', 'FLAT'], default: 'PERCENTAGE' },
+        enabled: { type: Boolean, default: true }
+      }
+    ],
+
     // SaaS subscription
     plan: { type: String, enum: ['BASIC', 'STANDARD', 'PREMIUM'], default: 'BASIC' },
     status: { type: String, enum: ['ACTIVE', 'SUSPENDED'], default: 'ACTIVE' },

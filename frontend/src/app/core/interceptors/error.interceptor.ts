@@ -9,6 +9,9 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
 
   return next(req).pipe(
     catchError((error) => {
+      // Public/customer-facing routes handle errors themselves — no global toast
+      if (req.url.includes('/public/')) return throwError(() => error);
+
       let message = 'Something went wrong. Please try again.';
 
       if (error?.error?.message) {

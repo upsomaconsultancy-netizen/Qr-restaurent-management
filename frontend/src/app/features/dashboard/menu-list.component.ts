@@ -279,6 +279,8 @@ export class MenuListComponent implements OnInit {
   }
 
   formatTaxes(item: any): string {
-    return (item.taxes || []).map((tax: any) => `${tax.name} ${tax.rate}%`).join(', ');
+    return (item.taxes || [])
+      .map((tax: any) => tax.type === 'FLAT' ? `${tax.name} ₹${tax.rate}` : `${tax.name} ${tax.rate}%`)
+      .join(', ');
   }
 }

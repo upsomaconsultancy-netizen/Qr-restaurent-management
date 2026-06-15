@@ -60,11 +60,20 @@ const CUSTOMER_TOKEN_PREFIX = 'ros_cust_token_';
       </div>
     } @else if (!data()) {
       <div class="cm-page cm-error-page">
-        <div class="cm-error-box">
-          <div class="cm-error-icon">⚠️</div>
-          <h2 class="cm-error-title">QR Code Invalid</h2>
-          <p class="cm-error-desc">This QR code is invalid or expired. Please ask staff for assistance.</p>
-        </div>
+        @if (fetchError()?.code === 'FORBIDDEN' || fetchError()?.message?.toLowerCase()?.includes('outlet') || fetchError()?.message?.toLowerCase()?.includes('unavailable')) {
+          <div class="cm-error-box cm-outlet-closed-box">
+            <div class="cm-outlet-closed-icon">🔒</div>
+            <h2 class="cm-error-title">Outlet Temporarily Closed</h2>
+            <p class="cm-error-desc">This outlet is currently unavailable or has been deactivated.</p>
+            <p class="cm-error-desc cm-error-hint">Please contact staff or visit us at another time.</p>
+          </div>
+        } @else {
+          <div class="cm-error-box">
+            <div class="cm-error-icon">⚠️</div>
+            <h2 class="cm-error-title">QR Code Invalid</h2>
+            <p class="cm-error-desc">This QR code is invalid or expired. Please ask staff for assistance.</p>
+          </div>
+        }
       </div>
     } @else if (!orderType()) {
       <div class="cm-page">
@@ -206,6 +215,13 @@ const CUSTOMER_TOKEN_PREFIX = 'ros_cust_token_';
                   <div class="cm-bill-row"><span>Subtotal</span><span>₹{{ b.subtotal }}</span></div>
                   @if (hasTaxes(b)) {
                     @for (t of b.taxes; track t.name) {
+                      @if ((t.amount || 0) > 0) {
+                        <div class="cm-bill-row cm-bill-tax"><span>{{ t.name }}</span><span>₹{{ t.amount }}</span></div>
+                      }
+                    }
+                  }
+                  @if (b.billTaxes?.length) {
+                    @for (t of b.billTaxes; track t.name) {
                       @if ((t.amount || 0) > 0) {
                         <div class="cm-bill-row cm-bill-tax"><span>{{ t.name }}</span><span>₹{{ t.amount }}</span></div>
                       }
@@ -380,20 +396,27 @@ const CUSTOMER_TOKEN_PREFIX = 'ros_cust_token_';
 
               <!-- Totals -->
               <div class="rcpt-totals">
-                <div class="rcpt-total-row"><span>Subtotal</span><span>₹{{ receipt()!.summary.subtotal | number:'1.2-2' }}</span></div>
+                <div class="rcpt-total-row"><span>Subtotal</span><span>&#8377;{{ receipt()!.summary.subtotal | number:'1.2-2' }}</span></div>
                 @for (t of receipt()!.summary.taxes; track t.name) {
                   @if ((t.amount || 0) > 0) {
-                    <div class="rcpt-total-row rcpt-tax-row"><span>{{ t.name }}</span><span>₹{{ t.amount | number:'1.2-2' }}</span></div>
+                    <div class="rcpt-total-row rcpt-tax-row"><span>{{ t.name }}</span><span>&#8377;{{ t.amount | number:'1.2-2' }}</span></div>
+                  }
+                }
+                @if (receipt()!.summary.billTaxes?.length) {
+                  @for (t of receipt()!.summary.billTaxes; track t.name) {
+                    @if ((t.amount || 0) > 0) {
+                      <div class="rcpt-total-row rcpt-tax-row"><span>{{ t.name }}</span><span>&#8377;{{ t.amount | number:'1.2-2' }}</span></div>
+                    }
                   }
                 }
                 @if (receipt()!.summary.serviceCharge) {
                   <div class="rcpt-total-row rcpt-tax-row">
                     <span>Service Charge ({{ receipt()!.summary.serviceChargePercent }}%)</span>
-                    <span>₹{{ receipt()!.summary.serviceCharge | number:'1.2-2' }}</span>
+                    <span>&#8377;{{ receipt()!.summary.serviceCharge | number:'1.2-2' }}</span>
                   </div>
                 }
-                <div class="rcpt-divider">───────────────────────────────────</div>
-                <div class="rcpt-total-row rcpt-grand-total"><span>GRAND TOTAL</span><span>₹{{ receipt()!.summary.grandTotal | number:'1.2-2' }}</span></div>
+                <div class="rcpt-divider">&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;&#x2500;</div>
+                <div class="rcpt-total-row rcpt-grand-total"><span>GRAND TOTAL</span><span>&#8377;{{ receipt()!.summary.grandTotal | number:'1.2-2' }}</span></div>
               </div>
 
               <div class="rcpt-divider">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</div>
@@ -551,6 +574,9 @@ const CUSTOMER_TOKEN_PREFIX = 'ros_cust_token_';
     .cm-table-full-icon { color:#ef4444; margin-bottom:1rem; }
     .cm-table-full-title { color:#ef4444; }
     .cm-table-full-hint { margin-top:.5rem; }
+    .cm-outlet-closed-box { border-color:rgba(107,114,128,.25); background:rgba(107,114,128,.04); }
+    .cm-outlet-closed-icon { font-size:3rem; margin-bottom:1rem; }
+    .cm-error-hint { margin-top:.5rem; font-size:.8rem; }
     .cm-table-full-capacity { display:flex; gap:.5rem; justify-content:center; margin-top:1.25rem; flex-wrap:wrap; }
     .cm-seat-dot { width:20px; height:20px; border-radius:50%; background:#e5e7eb; border:2px solid #d1d5db; }
     .cm-seat-taken { background:#ef4444; border-color:#dc2626; }
@@ -627,6 +653,7 @@ export class CustomerMenuComponent implements OnInit, OnChanges {
 
   loading              = signal(true);
   data                 = signal<any>(null);
+  fetchError           = signal<{ message: string; code?: string } | null>(null);
   tableFull            = signal<{ capacity: number; seatsOccupied: number } | null>(null);
   bill                 = signal<any>(null);
   receipt              = signal<any>(null);
@@ -677,6 +704,7 @@ export class CustomerMenuComponent implements OnInit, OnChanges {
 
   private fetchMenu() {
     this.loading.set(true);
+    this.fetchError.set(null);
     this.api.get<any>(`/public/qr/${this.qrToken}`).subscribe({
       next: ({ data }) => {
         if (data.tableFull) {
@@ -688,7 +716,13 @@ export class CustomerMenuComponent implements OnInit, OnChanges {
         this.loading.set(false);
         this.restoreCustomerSession(data.sessionToken);
       },
-      error: () => { this.data.set(null); this.loading.set(false); }
+      error: (err: any) => {
+        const msg = err?.error?.message || 'Something went wrong. Please try again.';
+        const code = err?.error?.code || (err?.status === 403 ? 'FORBIDDEN' : 'ERROR');
+        this.fetchError.set({ message: msg, code });
+        this.data.set(null);
+        this.loading.set(false);
+      }
     });
   }
 
@@ -764,7 +798,7 @@ export class CustomerMenuComponent implements OnInit, OnChanges {
       items: this.cart().map(l => ({ menuItemId: l.item._id, qty: l.qty }))
     }).subscribe({
       next: ({ data }) => { this.bill.set(data.bill); this.cart.set([]); this.placing.set(false); },
-      error: () => this.placing.set(false)
+      error: (e: any) => { this.placing.set(false); alert(e?.error?.message || 'Failed to place order. Please try again.'); }
     });
   }
 
@@ -805,5 +839,94 @@ export class CustomerMenuComponent implements OnInit, OnChanges {
   }
 
   closeReceipt() { this.receipt.set(null); }
-  printReceipt() { window.print(); }
+
+  printReceipt() {
+    const r = this.receipt();
+    if (!r) return;
+
+    const items = (r.items || []).map((i: any) => `
+      <tr>
+        <td>${i.name}${i.variant ? ` <span style="color:#666;font-size:10px;">(${i.variant})</span>` : ''}</td>
+        <td style="text-align:right">${i.qty}</td>
+        <td style="text-align:right">${(+i.unitPrice).toFixed(2)}</td>
+        <td style="text-align:right">${(+i.lineTotal).toFixed(2)}</td>
+      </tr>`).join('');
+
+    const taxes = (r.summary?.taxes || [])
+      .filter((t: any) => (t.amount || 0) > 0)
+      .map((t: any) => `<div style="display:flex;justify-content:space-between;font-size:11px;padding:.15rem 0;color:#555;"><span>${t.name}</span><span>&#8377;${(+t.amount).toFixed(2)}</span></div>`)
+      .join('');
+
+    const billTaxes = (r.summary?.billTaxes || [])
+      .filter((t: any) => (t.amount || 0) > 0)
+      .map((t: any) => `<div style="display:flex;justify-content:space-between;font-size:11px;padding:.15rem 0;color:#555;"><span>${t.name}</span><span>&#8377;${(+t.amount).toFixed(2)}</span></div>`)
+      .join('');
+
+    const serviceChargeLine = r.summary?.serviceCharge
+      ? `<div style="display:flex;justify-content:space-between;font-size:11px;padding:.15rem 0;color:#555;"><span>Service Charge (${r.summary.serviceChargePercent}%)</span><span>&#8377;${(+r.summary.serviceCharge).toFixed(2)}</span></div>`
+      : '';
+
+    const logo = r.restaurant?.logoUrl
+      ? `<img src="${r.restaurant.logoUrl}" style="width:64px;height:64px;object-fit:contain;border-radius:8px;margin-bottom:.5rem;">`
+      : '';
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+      <title>Receipt #${r.order?.orderId}</title>
+      <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Courier New', monospace; font-size: 12px; color: #111; background: #fff; }
+        .rcpt { max-width: 320px; margin: 0 auto; padding: 16px; text-align: center; }
+        table { width: 100%; border-collapse: collapse; font-size: 11px; margin: .5rem 0; }
+        th { border-bottom: 1px dashed #999; padding: .25rem .1rem; font-weight: bold; text-align: left; }
+        td { padding: .2rem .1rem; vertical-align: top; }
+        .details { text-align: left; margin: .5rem 0; }
+        .row { display: flex; justify-content: space-between; font-size: 11px; padding: .15rem 0; }
+        .row span:first-child { color: #666; }
+        .row span:last-child { font-weight: 600; }
+        .grand { font-size: 14px; font-weight: bold; padding: .5rem 0; }
+        @media print { @page { margin: 8mm; } }
+      </style>
+    </head><body><div class="rcpt">
+      ${logo}
+      <div style="font-size:15px;font-weight:bold;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.2rem;">${r.restaurant?.name || ''}</div>
+      ${r.restaurant?.address ? `<div style="font-size:11px;color:#444;margin:.1rem 0;">${r.restaurant.address}</div>` : ''}
+      ${r.restaurant?.phone ? `<div style="font-size:11px;color:#444;margin:.1rem 0;">📞 ${r.restaurant.phone}</div>` : ''}
+      ${r.restaurant?.gstin ? `<div style="font-size:11px;color:#444;margin:.1rem 0;">GSTIN: ${r.restaurant.gstin}</div>` : ''}
+      ${r.restaurant?.email ? `<div style="font-size:11px;color:#444;margin:.1rem 0;">${r.restaurant.email}</div>` : ''}
+      <div style="color:#666;margin:.5rem 0;overflow:hidden;">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</div>
+      <div style="font-size:12px;font-weight:bold;text-transform:uppercase;letter-spacing:.06em;margin:.2rem 0;">TAX INVOICE / CUSTOMER RECEIPT</div>
+      <div style="color:#666;margin:.5rem 0;overflow:hidden;">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</div>
+      <div class="details">
+        <div class="row"><span>Order ID</span><span>${r.order?.orderId}</span></div>
+        <div class="row"><span>Table</span><span>${r.order?.tableName || r.order?.tableNumber}</span></div>
+        <div class="row"><span>Customer</span><span>${r.order?.customerName}</span></div>
+        <div class="row"><span>Mobile</span><span>${r.order?.customerMobile}</span></div>
+        <div class="row"><span>Date</span><span>${r.order?.orderDate ? new Date(r.order.orderDate).toLocaleString('en-IN') : ''}</span></div>
+        <div class="row"><span>Generated</span><span>${r.order?.generatedAt ? new Date(r.order.generatedAt).toLocaleString('en-IN') : new Date().toLocaleString('en-IN')}</span></div>
+      </div>
+      <div style="color:#999;margin:.4rem 0;overflow:hidden;">───────────────────────────────────</div>
+      <table><thead><tr><th>Item</th><th style="text-align:right">Qty</th><th style="text-align:right">Rate</th><th style="text-align:right">Amt</th></tr></thead>
+      <tbody>${items}</tbody></table>
+      <div style="color:#999;margin:.4rem 0;overflow:hidden;">───────────────────────────────────</div>
+      <div style="text-align:left;">
+        <div class="row"><span>Subtotal</span><span>&#8377;${(+(r.summary?.subtotal || 0)).toFixed(2)}</span></div>
+        ${taxes}
+        ${billTaxes}
+        ${serviceChargeLine}
+        <div style="color:#999;margin:.4rem 0;overflow:hidden;">───────────────────────────────────</div>
+        <div class="row grand"><span>GRAND TOTAL</span><span>&#8377;${(+(r.summary?.grandTotal || 0)).toFixed(2)}</span></div>
+      </div>
+      <div style="color:#666;margin:.5rem 0;overflow:hidden;">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</div>
+      <div style="font-size:12px;font-weight:bold;margin:.3rem 0;">Thank You For Visiting!</div>
+      <div style="font-size:11px;color:#666;margin:.15rem 0;">Visit Again Soon</div>
+      ${r.restaurant?.website ? `<div style="font-size:10px;color:#777;margin-top:.15rem;">${r.restaurant.website}</div>` : ''}
+    </div></body></html>`;
+
+    const w = window.open('', '_blank', 'width=420,height=700');
+    if (!w) return;
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    w.onload = () => { w.print(); w.close(); };
+  }
 }

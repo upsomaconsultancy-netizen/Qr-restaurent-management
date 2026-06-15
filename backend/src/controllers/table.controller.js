@@ -14,36 +14,31 @@ exports.list = async (req, res) => {
 /** Enforces the table quota purchased on the subscription. */
 exports.create = async (req, res) => {
   const { number, name, capacity } = req.body;
-  if (!number) throw ApiError.badRequest('Table number required');
+  if (!number) throw ApiError.badRequest('Table number is required. Please enter a number for this table.');
 
-  // MANAGER/WAITER/KITCHEN: always use their own outlet from JWT — never trust body
-  // OWNER: must provide outletId in body
   const resolvedOutletId = ['MANAGER', 'WAITER', 'KITCHEN'].includes(req.user.role)
     ? req.user.outletId
     : req.body.outletId;
 
-  if (!resolvedOutletId) throw ApiError.badRequest('outletId is required');
+  if (!resolvedOutletId) throw ApiError.badRequest('Please select an outlet for this table.');
 
-  // Validate outlet belongs to this restaurant
   const outlet = await Outlet.findOne({ _id: resolvedOutletId, restaurantId: req.user.restaurantId, isDeleted: false });
-  if (!outlet) throw ApiError.notFound('Outlet not found');
+  if (!outlet) throw ApiError.notFound('The selected outlet was not found. Please refresh and try again.');
 
-  // Restaurant-wide subscription limit (counts ALL tables across all outlets)
   const totalCount = await Table.countDocuments({ restaurantId: req.user.restaurantId, isDeleted: false });
   if (totalCount >= req.tenant.tableLimit) {
     throw ApiError.forbidden(
-      `Restaurant table limit reached (${req.tenant.tableLimit} total). ` +
-      `Contact platform admin to upgrade your plan.`
+      `Your restaurant plan allows a maximum of ${req.tenant.tableLimit} tables and all slots are used. ` +
+      `Please contact the platform admin to upgrade your plan.`
     );
   }
 
-  // Per-outlet allocation limit (only enforced when tableLimit > 0 on the outlet)
   if (outlet.tableLimit > 0) {
     const outletCount = await Table.countDocuments({ outletId: outlet._id, isDeleted: false });
     if (outletCount >= outlet.tableLimit) {
       throw ApiError.forbidden(
-        `This outlet has reached its allocated table limit (${outlet.tableLimit}). ` +
-        `Contact the restaurant owner to increase this outlet's allocation.`
+        `This outlet has reached its table limit of ${outlet.tableLimit}. ` +
+        `Please ask the restaurant owner to increase this outlet's table allocation.`
       );
     }
   }
@@ -62,14 +57,14 @@ exports.create = async (req, res) => {
 
 exports.qrImage = async (req, res) => {
   const table = await Table.findOne(tenantFilter(req, { _id: req.params.id }));
-  if (!table) throw ApiError.notFound('Table not found');
+  if (!table) throw ApiError.notFound('Table not found. It may have been deleted.');
   const png = await qrPngDataUrl(table.qrCode);
   res.json({ success: true, data: { table: table.number, url: qrUrl(table.qrCode), png } });
 };
 
 exports.toggleActive = async (req, res) => {
   const table = await Table.findOne(tenantFilter(req, { _id: req.params.id }));
-  if (!table) throw ApiError.notFound('Table not found');
+  if (!table) throw ApiError.notFound('Table not found. It may have been deleted.');
   table.isActive = !table.isActive;
   await table.save();
   res.json({ success: true, data: table });
@@ -77,6 +72,6 @@ exports.toggleActive = async (req, res) => {
 
 exports.remove = async (req, res) => {
   const table = await Table.findOneAndUpdate(tenantFilter(req, { _id: req.params.id }), { isDeleted: true });
-  if (!table) throw ApiError.notFound('Table not found');
+  if (!table) throw ApiError.notFound('Table not found. It may have been deleted.');
   res.json({ success: true });
 };
