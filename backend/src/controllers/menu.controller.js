@@ -1,18 +1,35 @@
 const Category = require('../models/Category');
 const MenuItem = require('../models/MenuItem');
+const Outlet = require('../models/Outlet');
 const ApiError = require('../utils/ApiError');
-const { tenantFilter } = require('../middleware/tenant');
+const { tenantMenuFilter } = require('../middleware/tenant');
 const { uploadImage, deleteImage } = require('../config/cloudinary');
+
+// For OWNER: resolve their outletId = Main Branch (first created outlet for this restaurant)
+async function ownerOutletId(restaurantId) {
+  const outlet = await Outlet.findOne({ restaurantId, isDeleted: false }).sort({ createdAt: 1 }).lean();
+  return outlet ? outlet._id : null;
+}
+
+// Get the outletId to use when saving menu items/categories:
+// - WAITER/KITCHEN/MANAGER: their own outlet from JWT
+// - OWNER: Main Branch outlet
+async function resolveOutletId(req) {
+  if (req.user.outletId) return req.user.outletId;
+  return ownerOutletId(req.user.restaurantId);
+}
 
 // ---- Categories ----
 exports.listCategories = async (req, res) => {
-  const cats = await Category.find(tenantFilter(req)).sort('sortOrder').lean();
+  const cats = await Category.find(await await tenantMenuFilter(req)).sort('sortOrder').lean();
   res.json({ success: true, data: cats });
 };
 
 exports.createCategory = async (req, res) => {
+  const outletId = await resolveOutletId(req);
   const cat = await Category.create({
     restaurantId: req.user.restaurantId,
+    outletId,
     name: req.body.name,
     parentId: req.body.parentId || null,
     sortOrder: req.body.sortOrder || 0
@@ -21,10 +38,11 @@ exports.createCategory = async (req, res) => {
 };
 
 exports.deleteCategory = async (req, res) => {
+  const menuFilter = await tenantMenuFilter(req);
+
   const itemCount = await MenuItem.countDocuments({
-    restaurantId: req.user.restaurantId,
-    categoryId: req.params.id,
-    isDeleted: { $ne: true }
+    ...menuFilter,
+    categoryId: req.params.id
   });
 
   if (itemCount > 0) {
@@ -32,7 +50,7 @@ exports.deleteCategory = async (req, res) => {
   }
 
   const removed = await Category.findOneAndDelete({
-    restaurantId: req.user.restaurantId,
+    ...menuFilter,
     _id: req.params.id
   });
 
@@ -42,7 +60,7 @@ exports.deleteCategory = async (req, res) => {
 
 // ---- Items ----
 exports.listItems = async (req, res) => {
-  const filter = tenantFilter(req);
+  const filter = await tenantMenuFilter(req);
   if (req.query.categoryId) filter.categoryId = req.query.categoryId;
   const items = await MenuItem.find(filter).sort('name').lean();
   res.json({ success: true, data: items });
@@ -52,8 +70,10 @@ exports.createItem = async (req, res) => {
   const { name, price, categoryId } = req.body;
   if (!name || !price || !categoryId) throw ApiError.badRequest('name, price, categoryId required');
 
+  const outletId = await resolveOutletId(req);
   const item = new MenuItem({
     restaurantId: req.user.restaurantId,
+    outletId,
     categoryId,
     name,
     description: req.body.description,
@@ -77,7 +97,7 @@ exports.createItem = async (req, res) => {
 };
 
 exports.updateItem = async (req, res) => {
-  const item = await MenuItem.findOne(tenantFilter(req, { _id: req.params.id }));
+  const item = await MenuItem.findOne(tenantMenuFilter(req, { _id: req.params.id }));
   if (!item) throw ApiError.notFound('Item not found');
 
   const fields = ['name', 'description', 'price', 'foodType', 'spicyLevel', 'prepTimeMinutes', 'categoryId', 'isAvailable'];
@@ -98,7 +118,10 @@ exports.updateItem = async (req, res) => {
 };
 
 exports.deleteItem = async (req, res) => {
-  const item = await MenuItem.findOneAndUpdate(tenantFilter(req, { _id: req.params.id }), { isDeleted: true });
+  const item = await MenuItem.findOneAndUpdate(
+    tenantMenuFilter(req, { _id: req.params.id }),
+    { isDeleted: true }
+  );
   if (!item) throw ApiError.notFound('Item not found');
   res.json({ success: true });
 };

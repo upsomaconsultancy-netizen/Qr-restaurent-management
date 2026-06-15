@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const Order = require('../models/Order');
 const Payment = require('../models/Payment');
 const InventoryItem = require('../models/InventoryItem');
+const Outlet = require('../models/Outlet');
 
 const oid = (v) => new mongoose.Types.ObjectId(v);
 
@@ -16,10 +17,25 @@ function range(period) {
   return { start, end: now };
 }
 
-/** Sales + order analytics: GET /api/analytics/sales?period=day|week|month|year */
+function buildMatch(req, extra = {}) {
+  const match = { restaurantId: oid(req.user.restaurantId), isDeleted: false, ...extra };
+  // Outlet-scoped roles always see only their own outlet's data
+  if (['WAITER', 'KITCHEN'].includes(req.user.role) && req.user.outletId) {
+    match.outletId = oid(req.user.outletId);
+  } else if (req.user.role === 'MANAGER' && req.user.outletId) {
+    match.outletId = oid(req.user.outletId);
+  } else {
+    // OWNER: optionally filter by ?outletId= query param
+    const outletId = req.query.outletId;
+    if (outletId) match.outletId = oid(outletId);
+  }
+  return match;
+}
+
+/** Sales + order analytics: GET /api/analytics/sales?period=day|week|month|year&outletId= */
 exports.sales = async (req, res) => {
   const { start, end } = range(req.query.period);
-  const match = { restaurantId: oid(req.user.restaurantId), isDeleted: false, paymentStatus: 'PAID', createdAt: { $gte: start, $lte: end } };
+  const match = buildMatch(req, { paymentStatus: 'PAID', createdAt: { $gte: start, $lte: end } });
 
   const [summary, trend] = await Promise.all([
     Order.aggregate([
@@ -39,8 +55,9 @@ exports.sales = async (req, res) => {
 /** Item analytics: best/worst sellers, top 10. */
 exports.items = async (req, res) => {
   const { start, end } = range(req.query.period || 'month');
+  const match = buildMatch(req, { createdAt: { $gte: start, $lte: end }, status: { $ne: 'CANCELLED' } });
   const pipeline = [
-    { $match: { restaurantId: oid(req.user.restaurantId), isDeleted: false, createdAt: { $gte: start, $lte: end }, status: { $ne: 'CANCELLED' } } },
+    { $match: match },
     { $unwind: '$items' },
     { $match: { 'items.status': { $ne: 'CANCELLED' } } },
     { $group: { _id: '$items.menuItemId', name: { $first: '$items.name' }, qty: { $sum: '$items.qty' }, revenue: { $sum: '$items.lineTotal' } } },
@@ -61,7 +78,7 @@ exports.items = async (req, res) => {
 /** Peak hours / days. */
 exports.time = async (req, res) => {
   const { start, end } = range(req.query.period || 'month');
-  const match = { restaurantId: oid(req.user.restaurantId), isDeleted: false, createdAt: { $gte: start, $lte: end } };
+  const match = buildMatch(req, { createdAt: { $gte: start, $lte: end } });
   const [byHour, byDay] = await Promise.all([
     Order.aggregate([{ $match: match }, { $group: { _id: { $hour: '$createdAt' }, orders: { $sum: 1 }, revenue: { $sum: '$total' } } }, { $sort: { _id: 1 } }]),
     Order.aggregate([{ $match: match }, { $group: { _id: { $dayOfWeek: '$createdAt' }, orders: { $sum: 1 }, revenue: { $sum: '$total' } } }, { $sort: { _id: 1 } }])
@@ -72,8 +89,10 @@ exports.time = async (req, res) => {
 /** Staff performance: cash collected / orders handled per user. */
 exports.staff = async (req, res) => {
   const { start, end } = range(req.query.period || 'month');
+  const match = buildMatch(req, { createdAt: { $gte: start, $lte: end } });
+
   const rows = await Payment.aggregate([
-    { $match: { restaurantId: oid(req.user.restaurantId), createdAt: { $gte: start, $lte: end } } },
+    { $match: match },
     { $group: { _id: '$collectedBy', collected: { $sum: '$amount' }, payments: { $sum: 1 } } },
     { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'user' } },
     { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
@@ -85,13 +104,57 @@ exports.staff = async (req, res) => {
 
 /** Inventory analytics: low stock / out of stock. */
 exports.inventory = async (req, res) => {
-  const items = await InventoryItem.find({ restaurantId: req.user.restaurantId, isDeleted: false }).lean();
+  const filter = { restaurantId: req.user.restaurantId, isDeleted: false };
+  if (['WAITER', 'KITCHEN', 'MANAGER'].includes(req.user.role) && req.user.outletId) {
+    filter.outletId = req.user.outletId;
+  } else if (req.query.outletId) {
+    filter.outletId = req.query.outletId;
+  }
+  const items = await InventoryItem.find(filter).lean();
   res.json({
     success: true,
     data: {
       lowStock: items.filter((i) => i.currentStock > 0 && i.currentStock <= i.lowStockThreshold),
       outOfStock: items.filter((i) => i.currentStock <= 0),
       all: items
+    }
+  });
+};
+
+/**
+ * Consolidated owner analytics: revenue + orders per outlet.
+ * GET /api/tenant/analytics/consolidated?period=day|week|month|year
+ */
+exports.consolidated = async (req, res) => {
+  const { start, end } = range(req.query.period || 'month');
+
+  const outlets = await Outlet.find({ restaurantId: req.user.restaurantId, isDeleted: false }).lean();
+
+  const [totalAgg, perOutletAgg] = await Promise.all([
+    Order.aggregate([
+      { $match: { restaurantId: oid(req.user.restaurantId), isDeleted: false, paymentStatus: 'PAID', createdAt: { $gte: start, $lte: end } } },
+      { $group: { _id: null, revenue: { $sum: '$total' }, orders: { $sum: 1 }, avgOrderValue: { $avg: '$total' } } }
+    ]),
+    Order.aggregate([
+      { $match: { restaurantId: oid(req.user.restaurantId), isDeleted: false, paymentStatus: 'PAID', createdAt: { $gte: start, $lte: end } } },
+      { $group: { _id: '$outletId', revenue: { $sum: '$total' }, orders: { $sum: 1 }, avgOrderValue: { $avg: '$total' } } }
+    ])
+  ]);
+
+  const outletMap = new Map(outlets.map(o => [o._id.toString(), o]));
+  const outletStats = perOutletAgg.map(row => ({
+    outlet: outletMap.get(row._id?.toString()) || { _id: row._id, name: 'Unknown' },
+    revenue: row.revenue,
+    orders: row.orders,
+    avgOrderValue: row.avgOrderValue
+  }));
+
+  res.json({
+    success: true,
+    data: {
+      period: req.query.period || 'month',
+      total: totalAgg[0] || { revenue: 0, orders: 0, avgOrderValue: 0 },
+      outlets: outletStats
     }
   });
 };

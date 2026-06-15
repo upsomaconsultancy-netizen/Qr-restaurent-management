@@ -25,7 +25,7 @@ app.get('/api/health', (_req, res) => res.json({ ok: true, ts: Date.now() }));
 app.use('/api/auth', require('./routes/auth.routes'));
 app.use('/api/admin', require('./routes/admin.routes'));     // SUPER_ADMIN only
 app.use('/api/public', require('./routes/public.routes'));   // customer QR flow, no login
-app.use('/api', require('./routes/tenant.routes'));          // tenant-scoped staff APIs
+app.use('/api/tenant', require('./routes/tenant.routes'));   // tenant-scoped staff APIs
 
 app.use(notFound);
 app.use(errorHandler);

@@ -4,11 +4,13 @@ const crypto = require('crypto');
 const customerSessionSchema = new mongoose.Schema(
   {
     restaurantId: { type: mongoose.Types.ObjectId, ref: 'Restaurant', required: true },
+    outletId: { type: mongoose.Types.ObjectId, ref: 'Outlet', required: true, index: true },
     tableId:      { type: mongoose.Types.ObjectId, ref: 'Table', required: true },
     sessionId:    { type: mongoose.Types.ObjectId, ref: 'TableSession', required: true },
     customerName: { type: String, required: true, trim: true },
     mobileNumber: { type: String, required: true, trim: true },
     sessionToken: { type: String, required: true },
+    isActive: { type: Boolean, default: true },
     lastActivity: { type: Date, default: Date.now }
   },
   { timestamps: true }

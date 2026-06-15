@@ -8,7 +8,7 @@ function requireAuth(req, _res, next) {
   if (!token) return next(ApiError.unauthorized('Missing access token'));
   try {
     const payload = verifyAccess(token);
-    req.user = { id: payload.sub, role: payload.role, restaurantId: payload.restaurantId || null };
+    req.user = { id: payload.sub, role: payload.role, restaurantId: payload.restaurantId || null, outletId: payload.outletId || null };
     next();
   } catch {
     next(ApiError.unauthorized('Invalid or expired token'));

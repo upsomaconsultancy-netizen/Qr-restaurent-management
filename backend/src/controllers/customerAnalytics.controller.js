@@ -36,7 +36,7 @@ exports.favorites = async (req, res) => {
   const orderMatch = {
     restaurantId: restaurantId instanceof mongoose.Types.ObjectId ? restaurantId : new mongoose.Types.ObjectId(restaurantId),
     isDeleted: false,
-    status: { $in: ['SERVED', 'COMPLETED'] },
+    status: { $in: ['SERVED', 'PAYMENT_COMPLETED', 'CLOSED', 'COMPLETED'] },
     customerSessionId: { $exists: true, $ne: null }
   };
   if (dateRange) orderMatch.createdAt = dateRange;
@@ -136,7 +136,7 @@ exports.customerProfile = async (req, res) => {
     restaurantId,
     customerSessionId: { $in: sessionIds },
     isDeleted: false,
-    status: { $ne: 'CANCELLED' }
+    status: { $in: ['SERVED', 'PAYMENT_COMPLETED', 'CLOSED', 'COMPLETED'] }
   }).sort('createdAt').lean();
 
   // Item frequency map
@@ -189,7 +189,7 @@ exports.exportFavorites = async (req, res) => {
   const orderMatch = {
     restaurantId: restaurantId instanceof mongoose.Types.ObjectId ? restaurantId : new mongoose.Types.ObjectId(restaurantId),
     isDeleted: false,
-    status: { $in: ['SERVED', 'COMPLETED'] },
+    status: { $in: ['SERVED', 'PAYMENT_COMPLETED', 'CLOSED', 'COMPLETED'] },
     customerSessionId: { $exists: true, $ne: null }
   };
   if (dateRange) orderMatch.createdAt = dateRange;

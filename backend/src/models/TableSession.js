@@ -8,6 +8,7 @@ const mongoose = require('mongoose');
 const tableSessionSchema = new mongoose.Schema(
   {
     restaurantId: { type: mongoose.Types.ObjectId, ref: 'Restaurant', required: true, index: true },
+    outletId: { type: mongoose.Types.ObjectId, ref: 'Outlet', required: true, index: true },
     tableId: { type: mongoose.Types.ObjectId, ref: 'Table', required: true, index: true },
     sessionToken: { type: String, required: true, unique: true }, // held by the customer's browser
     status: { type: String, enum: ['OPEN', 'CLOSED'], default: 'OPEN' },

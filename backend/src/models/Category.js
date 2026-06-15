@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const categorySchema = new mongoose.Schema(
   {
     restaurantId: { type: mongoose.Types.ObjectId, ref: 'Restaurant', required: true, index: true },
+    outletId: { type: mongoose.Types.ObjectId, ref: 'Outlet', default: null, index: true },
     name: { type: String, required: true },
     parentId: { type: mongoose.Types.ObjectId, ref: 'Category', default: null }, // subcategories
     imageUrl: String,

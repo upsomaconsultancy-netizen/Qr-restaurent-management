@@ -1,6 +1,7 @@
 const { v4: uuid } = require('uuid');
 const Joi = require('joi');
 const User = require('../models/User');
+const Outlet = require('../models/Outlet');
 const RefreshToken = require('../models/RefreshToken');
 const ApiError = require('../utils/ApiError');
 const { signAccess, signRefresh, verifyRefresh } = require('../utils/jwt');
@@ -12,7 +13,7 @@ const loginSchema = Joi.object({
 });
 
 async function issueTokens(user, req, res) {
-  const payload = { sub: user._id.toString(), role: user.role, restaurantId: user.restaurantId };
+  const payload = { sub: user._id.toString(), role: user.role, restaurantId: user.restaurantId, outletId: user.outletId || null };
   const access = signAccess(payload);
   const refresh = signRefresh({ sub: payload.sub, jti: uuid() });
   await RefreshToken.create({
@@ -39,6 +40,15 @@ exports.login = async (req, res) => {
     throw ApiError.unauthorized('Invalid email or password');
   }
 
+  // Block login if the outlet assigned to this WAITER/KITCHEN is inactive
+  if (['WAITER', 'KITCHEN'].includes(user.role) && user.outletId) {
+    const outlet = await Outlet.findOne({ _id: user.outletId, isDeleted: false }).lean();
+    if (!outlet || outlet.status !== 'ACTIVE') {
+      audit({ req, restaurantId: user.restaurantId, action: 'LOGIN_BLOCKED_OUTLET_INACTIVE', entity: 'User', entityId: user._id });
+      throw ApiError.forbidden('This outlet has been deactivated. Please contact your main branch.', 'OUTLET_INACTIVE');
+    }
+  }
+
   user.lastLoginAt = new Date();
   user.lastLoginIp = req.ip;
   await user.save();
@@ -49,7 +59,7 @@ exports.login = async (req, res) => {
     success: true,
     data: {
       accessToken,
-      user: { id: user._id, name: user.name, email: user.email, role: user.role, restaurantId: user.restaurantId }
+      user: { id: user._id, name: user.name, email: user.email, role: user.role, restaurantId: user.restaurantId, outletId: user.outletId || null }
     }
   });
 };

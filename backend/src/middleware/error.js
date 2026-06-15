@@ -18,7 +18,8 @@ function errorHandler(err, _req, res, _next) {
   res.status(status).json({
     success: false,
     message: status === 500 && env.nodeEnv === 'production' ? 'Internal server error' : message,
-    details: details.length ? details : undefined
+    details: details.length ? details : undefined,
+    ...(err.code ? { code: err.code } : {})
   });
 }
 

@@ -1,8 +1,8 @@
 const mongoose = require('mongoose');
 
-/** Per-restaurant atomic counters (order numbers). */
+/** Per-outlet atomic counters (order numbers). */
 const counterSchema = new mongoose.Schema({
-  key: { type: String, required: true, unique: true }, // `${restaurantId}:order`
+  key: { type: String, required: true, unique: true }, // `${outletId}:order`
   seq: { type: Number, default: 0 }
 });
 

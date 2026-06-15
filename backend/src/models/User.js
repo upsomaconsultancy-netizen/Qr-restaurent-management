@@ -6,6 +6,7 @@ const ROLES = ['SUPER_ADMIN', 'OWNER', 'MANAGER', 'WAITER', 'KITCHEN'];
 const userSchema = new mongoose.Schema(
   {
     restaurantId: { type: mongoose.Types.ObjectId, ref: 'Restaurant', index: true, default: null }, // null => SUPER_ADMIN
+    outletId: { type: mongoose.Types.ObjectId, ref: 'Outlet', index: true, default: null }, // required for WAITER/KITCHEN
     name: { type: String, required: true },
     email: { type: String, required: true, lowercase: true },
     passwordHash: { type: String, required: true, select: false },

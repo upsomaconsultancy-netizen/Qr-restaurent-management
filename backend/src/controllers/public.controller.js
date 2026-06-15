@@ -1,6 +1,7 @@
 const { randomBytes } = require('crypto');
 const Table = require('../models/Table');
 const Restaurant = require('../models/Restaurant');
+const Outlet = require('../models/Outlet');
 const Category = require('../models/Category');
 const MenuItem = require('../models/MenuItem');
 const TableSession = require('../models/TableSession');
@@ -9,13 +10,14 @@ const Order = require('../models/Order');
 const Counter = require('../models/Counter');
 const ApiError = require('../utils/ApiError');
 const { priceOrder, sessionBill, customerBill } = require('../services/billing.service');
-const { emitToStaff, emitToCustomer } = require('../sockets');
+const { emitToOutlet, emitToCustomer } = require('../sockets');
 const { audit } = require('../utils/audit');
 
 /** Returns up to 5 past completed orders for this mobile (excluding current session). */
-async function getPastOrders(restaurantId, mobileNumber, excludeSessionId) {
+async function getPastOrders(restaurantId, outletId, mobileNumber, excludeSessionId) {
   const pastSessions = await CustomerSession.find({
     restaurantId,
+    outletId,           // only visits to THIS outlet
     mobileNumber,
     _id: { $ne: excludeSessionId }
   }).sort('-createdAt').limit(10).lean();
@@ -30,7 +32,6 @@ async function getPastOrders(restaurantId, mobileNumber, excludeSessionId) {
     status: { $ne: 'CANCELLED' }
   }).sort('-createdAt').limit(20).lean();
 
-  // Group by session date and summarise
   const bySession = new Map();
   for (const cs of pastSessions) {
     bySession.set(cs._id.toString(), { date: cs.createdAt, items: [], total: 0 });
@@ -58,28 +59,54 @@ async function getPastOrders(restaurantId, mobileNumber, excludeSessionId) {
 /**
  * GET /api/public/qr/:qrToken
  * Customer scans QR → get restaurant info, menu, sessionToken.
+ * Also checks table capacity — if full, returns tableFull: true.
  */
 exports.resolveQr = async (req, res) => {
   const table = await Table.findOne({ qrCode: req.params.qrToken, isDeleted: false, isActive: true }).lean();
   if (!table) throw ApiError.notFound('Invalid QR code');
 
-  const restaurant = await Restaurant.findOne({ _id: table.restaurantId, isDeleted: false, status: 'ACTIVE' }).lean();
-  if (!restaurant) throw ApiError.forbidden('Restaurant unavailable');
-
-  const [categories, items] = await Promise.all([
-    Category.find({ restaurantId: restaurant._id, isDeleted: false, isActive: true }).sort('sortOrder').lean(),
-    MenuItem.find({ restaurantId: restaurant._id, isDeleted: false, isAvailable: true }).lean()
+  const [restaurant, outlet] = await Promise.all([
+    Restaurant.findOne({ _id: table.restaurantId, isDeleted: false, status: 'ACTIVE' }).lean(),
+    Outlet.findOne({ _id: table.outletId, isDeleted: false, status: 'ACTIVE' }).lean()
   ]);
+  if (!restaurant) throw ApiError.forbidden('Restaurant unavailable');
+  if (!outlet) throw ApiError.forbidden('This outlet is currently unavailable');
 
   // Reuse open table session or create a new one
   let session = await TableSession.findOne({ tableId: table._id, status: 'OPEN' });
   if (!session) {
     session = await TableSession.create({
       restaurantId: restaurant._id,
+      outletId: table.outletId,
       tableId: table._id,
       sessionToken: randomBytes(24).toString('hex')
     });
   }
+
+  // Check table capacity — count active customer sessions for this table session
+  const activeSeats = await CustomerSession.countDocuments({
+    tableId: table._id,
+    sessionId: session._id,
+    isActive: true
+  });
+
+  if (activeSeats >= table.capacity) {
+    return res.json({
+      success: true,
+      data: {
+        tableFull: true,
+        capacity: table.capacity,
+        seatsOccupied: activeSeats,
+        table: { id: table._id, number: table.number, name: table.name }
+      }
+    });
+  }
+
+  // Fetch strictly this outlet's items only — no cross-outlet or owner menu fallback
+  const [categories, items] = await Promise.all([
+    Category.find({ restaurantId: restaurant._id, outletId: table.outletId, isDeleted: false, isActive: true }).sort('sortOrder').lean(),
+    MenuItem.find({ restaurantId: restaurant._id, outletId: table.outletId, isDeleted: false, isAvailable: true }).lean()
+  ]);
 
   res.json({
     success: true,
@@ -92,7 +119,8 @@ exports.resolveQr = async (req, res) => {
         taxPercent: restaurant.taxPercent,
         orderTypes: restaurant.settings.orderTypes
       },
-      table: { id: table._id, number: table.number, name: table.name },
+      outlet: { id: outlet._id, name: outlet.name },
+      table: { id: table._id, number: table.number, name: table.name, capacity: table.capacity, seatsOccupied: activeSeats },
       sessionToken: session.sessionToken,
       categories,
       items
@@ -103,7 +131,6 @@ exports.resolveQr = async (req, res) => {
 /**
  * POST /api/public/customer-session
  * Create or resume a customer session (called once when customer enters name+mobile).
- * Returns customerToken stored in localStorage by the browser.
  */
 exports.createCustomerSession = async (req, res) => {
   const { sessionToken, customerName, mobileNumber } = req.body;
@@ -120,23 +147,45 @@ exports.createCustomerSession = async (req, res) => {
   // Idempotent: same mobile on same table session → return existing customer session
   let cs = await CustomerSession.findOne({ sessionId: tableSession._id, mobileNumber: mobile });
   if (cs) {
+    // Reactivate if they were previously served and returned
+    if (!cs.isActive) {
+      cs.isActive = true;
+    }
     cs.lastActivity = new Date();
     await cs.save();
-    const pastOrders = await getPastOrders(tableSession.restaurantId, mobile, cs._id);
+    const pastOrders = await getPastOrders(tableSession.restaurantId, tableSession.outletId, mobile, cs._id);
     return res.json({ success: true, data: { customerToken: cs.sessionToken, isExisting: true, pastOrders } });
+  }
+
+  // Race-condition safe: re-check capacity before creating
+  const table = await Table.findById(tableSession.tableId).lean();
+  const activeSeats = await CustomerSession.countDocuments({
+    tableId: tableSession.tableId,
+    sessionId: tableSession._id,
+    isActive: true
+  });
+  if (table && activeSeats >= table.capacity) {
+    throw ApiError.badRequest('TABLE_FULL: This table is at capacity. Please take another seat.');
   }
 
   const token = CustomerSession.generateToken();
   cs = await CustomerSession.create({
     restaurantId: tableSession.restaurantId,
+    outletId: tableSession.outletId,
     tableId: tableSession.tableId,
     sessionId: tableSession._id,
     customerName: name,
     mobileNumber: mobile,
-    sessionToken: token
+    sessionToken: token,
+    isActive: true
   });
 
-  const pastOrders = await getPastOrders(tableSession.restaurantId, mobile, cs._id);
+  // Update seat count on table
+  if (table) {
+    await Table.updateOne({ _id: table._id }, { $inc: { seatsOccupied: 1 } });
+  }
+
+  const pastOrders = await getPastOrders(tableSession.restaurantId, tableSession.outletId, mobile, cs._id);
   res.status(201).json({ success: true, data: { customerToken: cs.sessionToken, isExisting: false, pastOrders } });
 };
 
@@ -160,11 +209,14 @@ exports.placeOrder = async (req, res) => {
   const restaurant = await Restaurant.findOne({ _id: tableSession.restaurantId, status: 'ACTIVE', isDeleted: false }).lean();
   if (!restaurant) throw ApiError.forbidden('Restaurant unavailable');
 
-  // Server-side pricing — never trust client prices
+  // Server-side pricing — never trust client prices; fetch from outlet-scoped menu
   const orderItems = [];
   for (const line of items) {
     const mi = await MenuItem.findOne({
-      _id: line.menuItemId, restaurantId: restaurant._id, isDeleted: false, isAvailable: true
+      _id: line.menuItemId,
+      outletId: tableSession.outletId,
+      isDeleted: false,
+      isAvailable: true
     }).lean();
     if (!mi) throw ApiError.badRequest('One of the items is no longer available');
 
@@ -192,9 +244,11 @@ exports.placeOrder = async (req, res) => {
     });
   }
 
-  const orderNumber = await Counter.next(`${restaurant._id}:order`);
+  // Order counter is now per-outlet
+  const orderNumber = await Counter.next(`${tableSession.outletId}:order`);
   const order = new Order({
     restaurantId: restaurant._id,
+    outletId: tableSession.outletId,
     tableId: tableSession.tableId,
     sessionId: tableSession._id,
     customerSessionId: cs._id,
@@ -211,7 +265,7 @@ exports.placeOrder = async (req, res) => {
   await cs.save();
 
   audit({ req, restaurantId: restaurant._id, action: 'ORDER_CREATED', entity: 'Order', entityId: order._id });
-  emitToStaff(restaurant._id.toString(), 'order:new', order);
+  emitToOutlet(restaurant._id.toString(), tableSession.outletId.toString(), 'order:new', order);
 
   const bill = await customerBill(cs._id);
   emitToCustomer(cs.sessionToken, 'bill:updated', bill);
@@ -232,7 +286,7 @@ exports.myBill = async (req, res) => {
   const [tableSession, bill, pastOrders] = await Promise.all([
     TableSession.findById(cs.sessionId).lean(),
     customerBill(cs._id),
-    getPastOrders(cs.restaurantId, cs.mobileNumber, cs._id)
+    getPastOrders(cs.restaurantId, cs.outletId, cs.mobileNumber, cs._id)
   ]);
 
   res.json({

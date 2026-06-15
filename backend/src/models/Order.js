@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
-const ITEM_STATUSES = ['PENDING', 'ACCEPTED', 'PREPARING', 'READY', 'SERVED', 'CANCELLED'];
-const ORDER_STATUSES = ['PENDING', 'ACCEPTED', 'PREPARING', 'READY', 'SERVED', 'COMPLETED', 'CANCELLED'];
+const ITEM_STATUSES = ['PENDING', 'ACCEPTED', 'PREPARING', 'DONE', 'READY_TO_SERVE', 'SERVED', 'CANCELLED'];
+const ORDER_STATUSES = ['PENDING', 'ACCEPTED', 'PREPARING', 'DONE', 'READY_TO_SERVE', 'SERVED', 'PAYMENT_COMPLETED', 'CLOSED', 'CANCELLED'];
 
 const orderItemSchema = new mongoose.Schema(
   {
@@ -38,6 +38,7 @@ const orderItemSchema = new mongoose.Schema(
 const orderSchema = new mongoose.Schema(
   {
     restaurantId: { type: mongoose.Types.ObjectId, ref: 'Restaurant', required: true, index: true },
+    outletId: { type: mongoose.Types.ObjectId, ref: 'Outlet', required: true, index: true },
     tableId: { type: mongoose.Types.ObjectId, ref: 'Table', index: true },
     sessionId:         { type: mongoose.Types.ObjectId, ref: 'TableSession', index: true },
     customerSessionId: { type: mongoose.Types.ObjectId, ref: 'CustomerSession', index: true },
@@ -59,6 +60,7 @@ const orderSchema = new mongoose.Schema(
 
     paymentStatus: { type: String, enum: ['UNPAID', 'PAID'], default: 'UNPAID' },
     paymentMode:   { type: String, enum: ['CASH', 'CARD', 'UPI', 'OTHER'], default: null },
+    servedAt: { type: Date, default: null },
     paidAt:        { type: Date, default: null },
     placedBy: { type: String, enum: ['CUSTOMER', 'STAFF'], default: 'CUSTOMER' },
     placedByUserId: { type: mongoose.Types.ObjectId, ref: 'User' },
@@ -76,9 +78,11 @@ const orderSchema = new mongoose.Schema(
 );
 
 orderSchema.index({ restaurantId: 1, status: 1, createdAt: -1 });
-orderSchema.index({ restaurantId: 1, orderNumber: 1 }, { unique: true });
+// Unique order numbers are per-outlet, not per-restaurant — prevents cross-outlet duplicate key errors
+orderSchema.index({ outletId: 1, orderNumber: 1 }, { unique: true });
 orderSchema.index({ restaurantId: 1, customerSessionId: 1, createdAt: -1 });
 orderSchema.index({ restaurantId: 1, paymentStatus: 1 });
+orderSchema.index({ outletId: 1, status: 1, createdAt: -1 });
 
 module.exports = mongoose.model('Order', orderSchema);
 module.exports.ITEM_STATUSES = ITEM_STATUSES;

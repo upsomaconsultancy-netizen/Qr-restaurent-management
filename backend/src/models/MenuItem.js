@@ -12,6 +12,7 @@ const addonSchema = new mongoose.Schema(
 const menuItemSchema = new mongoose.Schema(
   {
     restaurantId: { type: mongoose.Types.ObjectId, ref: 'Restaurant', required: true, index: true },
+    outletId: { type: mongoose.Types.ObjectId, ref: 'Outlet', default: null, index: true },
     categoryId: { type: mongoose.Types.ObjectId, ref: 'Category', required: true, index: true },
     name: { type: String, required: true },
     description: String,

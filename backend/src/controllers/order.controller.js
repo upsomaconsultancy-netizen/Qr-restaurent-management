@@ -1,17 +1,31 @@
 const Order = require('../models/Order');
+const Table = require('../models/Table');
 const TableSession = require('../models/TableSession');
 const CustomerSession = require('../models/CustomerSession');
 const Payment = require('../models/Payment');
+const Outlet = require('../models/Outlet');
 const User = require('../models/User');
 const Restaurant = require('../models/Restaurant');
 const ApiError = require('../utils/ApiError');
 const { tenantFilter } = require('../middleware/tenant');
 const { sessionBill, customerBill } = require('../services/billing.service');
 const { consumeForOrder } = require('../services/inventory.service');
-const { emitToStaff, emitToCustomer } = require('../sockets');
+const { emitToOutlet, emitToOutletWaiters, emitToCustomer, emitToStaff } = require('../sockets');
 const { audit } = require('../utils/audit');
 
-const ORDER_FLOW = ['PENDING', 'ACCEPTED', 'PREPARING', 'READY', 'SERVED', 'COMPLETED'];
+// Full kitchen→waiter→payment workflow
+const ORDER_FLOW = ['PENDING', 'ACCEPTED', 'PREPARING', 'DONE', 'READY_TO_SERVE', 'SERVED', 'PAYMENT_COMPLETED', 'CLOSED'];
+
+// Kitchen may only advance up to DONE (accept, prepare, mark done)
+const KITCHEN_ALLOWED_STATUSES = ['ACCEPTED', 'PREPARING', 'DONE', 'CANCELLED'];
+// Waiter can mark READY_TO_SERVE and SERVED; cannot complete payment or close
+const WAITER_ALLOWED_STATUSES = ['READY_TO_SERVE', 'SERVED'];
+// Manager/Owner complete payment and close orders
+const MANAGER_OWNER_ONLY_STATUSES = ['PAYMENT_COMPLETED', 'CLOSED'];
+// Statuses kitchen is explicitly forbidden from setting
+const KITCHEN_FORBIDDEN_STATUSES = ['READY_TO_SERVE', 'SERVED', 'PAYMENT_COMPLETED', 'CLOSED'];
+// Statuses only manager/owner can set (waiter cannot)
+const WAITER_FORBIDDEN_STATUSES = ['PAYMENT_COMPLETED', 'CLOSED'];
 
 exports.list = async (req, res) => {
   const filter = tenantFilter(req);
@@ -26,10 +40,21 @@ exports.list = async (req, res) => {
   res.json({ success: true, data: orders });
 };
 
-/** Kitchen queue: anything not finished yet. */
+/** Kitchen queue: active kitchen tasks only (up to DONE). */
 exports.kitchenQueue = async (req, res) => {
   const orders = await Order.find(
-    tenantFilter(req, { status: { $in: ['PENDING', 'ACCEPTED', 'PREPARING', 'READY'] } })
+    tenantFilter(req, { status: { $in: ['PENDING', 'ACCEPTED', 'PREPARING', 'DONE'] } })
+  ).sort('createdAt')
+    .populate('tableId', 'number name')
+    .populate('customerSessionId', 'customerName mobileNumber')
+    .lean();
+  res.json({ success: true, data: orders });
+};
+
+/** Waiter queue: orders ready to serve (kitchen marked DONE → READY_TO_SERVE). */
+exports.waiterQueue = async (req, res) => {
+  const orders = await Order.find(
+    tenantFilter(req, { status: { $in: ['READY_TO_SERVE', 'SERVED'] } })
   ).sort('createdAt')
     .populate('tableId', 'number name')
     .populate('customerSessionId', 'customerName mobileNumber')
@@ -41,6 +66,21 @@ exports.kitchenQueue = async (req, res) => {
 exports.updateStatus = async (req, res) => {
   const { status } = req.body;
   if (!ORDER_FLOW.includes(status) && status !== 'CANCELLED') throw ApiError.badRequest('Invalid status');
+
+  const role = req.user.role;
+
+  // Kitchen can only: ACCEPTED, PREPARING, DONE, CANCELLED
+  if (role === 'KITCHEN' && KITCHEN_FORBIDDEN_STATUSES.includes(status)) {
+    throw ApiError.forbidden('Kitchen staff can only accept, prepare, or mark orders done. Notify the waiter to serve.');
+  }
+
+  // Waiter can only: READY_TO_SERVE, SERVED (cannot complete payment or close)
+  if (role === 'WAITER' && WAITER_FORBIDDEN_STATUSES.includes(status)) {
+    throw ApiError.forbidden('Waiters cannot complete payment or close orders. Please notify the outlet manager.');
+  }
+  if (role === 'WAITER' && !WAITER_ALLOWED_STATUSES.includes(status) && status !== 'CANCELLED') {
+    throw ApiError.forbidden('Waiters can only mark orders as ready to serve or served.');
+  }
 
   const user = await User.findById(req.user.id).lean();
   const order = await Order.findOne(tenantFilter(req, { _id: req.params.id }));
@@ -55,13 +95,34 @@ exports.updateStatus = async (req, res) => {
   if (status === 'ACCEPTED' && prev === 'PENDING') {
     consumeForOrder(order).catch((e) => console.error('[inventory]', e.message));
   }
+
+  // Kitchen marks DONE → advance to READY_TO_SERVE and notify waiters immediately
+  if (status === 'DONE') {
+    order.status = 'READY_TO_SERVE';
+    const [table, outlet] = await Promise.all([
+      Table.findById(order.tableId).lean(),
+      Outlet.findById(order.outletId).lean()
+    ]);
+    emitToOutletWaiters(order.restaurantId, order.outletId, 'order:ready_to_serve', {
+      orderId: order._id,
+      orderNumber: order.orderNumber,
+      tableName: table ? (table.name || `T-${table.number}`) : 'Unknown',
+      tableNumber: table?.number,
+      items: order.items.filter(i => i.status !== 'CANCELLED').map(i => ({ name: i.name, qty: i.qty })),
+      customerName: order.customerName,
+      outletName: outlet?.name,
+      timestamp: new Date()
+    });
+  }
+
   if (status === 'SERVED') {
     const now = new Date();
+    order.servedAt = now;
     for (const item of order.items) {
       if (item.status !== 'CANCELLED') {
         item.status = 'SERVED';
         item.servedAt = item.servedAt || now;
-        item.locked = true; // ITEM LOCKING: served items become immutable
+        item.locked = true;
         item.servedBy = req.user.id;
         item.servedByName = user?.name;
         item.servedByEmail = user?.email;
@@ -70,22 +131,38 @@ exports.updateStatus = async (req, res) => {
         item.statusUpdatedByEmail = user?.email;
       }
     }
-  } else if (ORDER_FLOW.includes(status)) {
+
+    // Release seat: mark customer session inactive
+    if (order.customerSessionId) {
+      await CustomerSession.updateOne(
+        { _id: order.customerSessionId },
+        { isActive: false }
+      );
+      const remainingSeats = await CustomerSession.countDocuments({
+        tableId: order.tableId,
+        sessionId: order.sessionId,
+        isActive: true
+      });
+      await Table.updateOne({ _id: order.tableId }, { seatsOccupied: remainingSeats });
+    }
+  } else if (['ACCEPTED', 'PREPARING', 'READY_TO_SERVE', 'PAYMENT_COMPLETED', 'CLOSED'].includes(status)) {
     for (const item of order.items) {
       if (!item.locked && item.status !== 'CANCELLED') {
-        item.status = status === 'COMPLETED' ? 'SERVED' : status;
         item.statusUpdatedBy = req.user.id;
         item.statusUpdatedByName = user?.name;
         item.statusUpdatedByEmail = user?.email;
+        // Map order-level status to item status where applicable
+        if (['ACCEPTED', 'PREPARING'].includes(status)) {
+          item.status = status;
+        }
       }
     }
   }
 
   await order.save();
-  audit({ req, action: 'ORDER_STATUS_CHANGED', entity: 'Order', entityId: order._id, meta: { from: prev, to: status } });
+  audit({ req, action: 'ORDER_STATUS_CHANGED', entity: 'Order', entityId: order._id, meta: { from: prev, to: order.status } });
 
-  emitToStaff(req.user.restaurantId, 'order:updated', order);
-  // Emit only to the customer who owns this order (not to the whole table)
+  emitToOutlet(order.restaurantId, order.outletId, 'order:updated', order);
   if (order.customerSessionId) {
     const cs = await CustomerSession.findById(order.customerSessionId).lean();
     if (cs) emitToCustomer(cs.sessionToken, 'order:updated', order);
@@ -94,9 +171,18 @@ exports.updateStatus = async (req, res) => {
   res.json({ success: true, data: order });
 };
 
-/** Update a single line item (kitchen marks one dish ready, etc.). */
+/** Update a single line item (kitchen marks one dish done, etc.). */
 exports.updateItemStatus = async (req, res) => {
   const { status } = req.body;
+  const role = req.user.role;
+
+  if (role === 'KITCHEN' && KITCHEN_FORBIDDEN_STATUSES.includes(status)) {
+    throw ApiError.forbidden('Kitchen staff cannot mark items as served. Please notify the waiter.');
+  }
+  if (role === 'WAITER' && WAITER_FORBIDDEN_STATUSES.includes(status)) {
+    throw ApiError.forbidden('Waiters cannot complete payment or close orders.');
+  }
+
   const user = await User.findById(req.user.id).lean();
   const order = await Order.findOne(tenantFilter(req, { _id: req.params.id }));
   if (!order) throw ApiError.notFound('Order not found');
@@ -117,8 +203,7 @@ exports.updateItemStatus = async (req, res) => {
   }
   await order.save();
 
-  emitToStaff(req.user.restaurantId, 'item:updated', { orderId: order._id, item });
-  // Emit only to the customer who owns this order
+  emitToOutlet(order.restaurantId, order.outletId, 'item:updated', { orderId: order._id, item });
   if (order.customerSessionId) {
     const cs = await CustomerSession.findById(order.customerSessionId).lean();
     if (cs) emitToCustomer(cs.sessionToken, 'item:updated', { orderId: order._id, item });
@@ -136,7 +221,8 @@ exports.orderReceipt = async (req, res) => {
     Restaurant.findById(req.user.restaurantId).lean()
   ]);
   if (!order) throw ApiError.notFound('Order not found');
-  if (order.paymentStatus !== 'PAID' && order.status !== 'SERVED' && order.status !== 'COMPLETED') {
+  const terminalStatuses = ['SERVED', 'PAYMENT_COMPLETED', 'CLOSED', 'COMPLETED'];
+  if (order.paymentStatus !== 'PAID' && !terminalStatuses.includes(order.status)) {
     throw ApiError.conflict('Receipt is available only after the order is served or paid');
   }
 
@@ -162,37 +248,41 @@ exports.orderReceipt = async (req, res) => {
 };
 
 /**
- * Cash flow: waiter/cashier marks a session's bill as paid.
- * Records who collected, amount, time, method -> full audit trail.
+ * Waiter/Manager/Owner marks an order as payment completed.
+ * Kitchen staff are not permitted to collect payment.
  */
 exports.markPaid = async (req, res) => {
+  const role = req.user.role;
+  if (role === 'KITCHEN') throw ApiError.forbidden('Kitchen staff cannot process payments.');
+
   const { sessionId, orderId, method = 'CASH', reference } = req.body;
   if (!['CASH', 'UPI', 'CARD', 'OTHER'].includes(method)) throw ApiError.badRequest('Invalid payment method');
   if (!orderId) throw ApiError.badRequest('Missing orderId');
 
-  const order = await Order.findOne({ _id: orderId, restaurantId: req.user.restaurantId, isDeleted: false });
+  // Use tenantFilter to enforce outletId isolation — WAITER/KITCHEN scoped to their outlet,
+  // MANAGER scoped to their outlet, OWNER can see all or filter by ?outletId
+  const order = await Order.findOne(tenantFilter(req, { _id: orderId }));
   if (!order) throw ApiError.notFound('Order not found');
   if (order.paymentStatus === 'PAID') throw ApiError.conflict('Order already paid');
 
-  const session = sessionId 
-    ? await TableSession.findOne({ _id: sessionId, restaurantId: req.user.restaurantId })
+  const session = sessionId
+    ? await TableSession.findOne({ _id: sessionId, restaurantId: req.user.restaurantId, outletId: order.outletId })
     : (order.sessionId ? await TableSession.findById(order.sessionId) : null);
 
   const user = await User.findById(req.user.id).lean();
-  
-  // Mark only this order as paid
+
   order.paymentStatus = 'PAID';
   order.paymentMode = method;
   order.paidAt = new Date();
-  order.status = 'COMPLETED';
+  order.status = 'PAYMENT_COMPLETED';
   order.paidBy = req.user.id;
   order.paidByName = user?.name;
   order.paidByEmail = user?.email;
   await order.save();
 
-  // Create payment record for this order only
   const payment = await Payment.create({
     restaurantId: req.user.restaurantId,
+    outletId: order.outletId,
     sessionId: order.sessionId || session?._id,
     orderIds: [order._id],
     amount: order.total,
@@ -203,7 +293,6 @@ exports.markPaid = async (req, res) => {
     collectedByEmail: user?.email
   });
 
-  // Update session status only if all orders are now paid
   if (session) {
     const bill = await sessionBill(session._id);
     if (bill.paid) {
@@ -214,9 +303,8 @@ exports.markPaid = async (req, res) => {
   }
 
   audit({ req, action: 'PAYMENT_MARKED_PAID', entity: 'Payment', entityId: payment._id, meta: { amount: payment.amount, method, orderId } });
-  emitToStaff(req.user.restaurantId, 'payment:recorded', payment);
+  emitToOutlet(order.restaurantId, order.outletId, 'payment:recorded', payment);
 
-  // Emit isolated bill to each customer's own room — avoids cross-customer bill pollution
   if (session) {
     const customerSessions = await CustomerSession.find({ sessionId: session._id }).lean();
     await Promise.all(customerSessions.map(async (cs) => {
@@ -226,4 +314,32 @@ exports.markPaid = async (req, res) => {
   }
 
   res.json({ success: true, data: payment });
+};
+
+/**
+ * Manager/Owner closes an order after payment is completed.
+ */
+exports.closeOrder = async (req, res) => {
+  const role = req.user.role;
+  if (!['MANAGER', 'OWNER'].includes(role)) {
+    throw ApiError.forbidden('Only outlet managers and restaurant owners can close orders.');
+  }
+
+  const order = await Order.findOne(tenantFilter(req, { _id: req.params.id }));
+  if (!order) throw ApiError.notFound('Order not found');
+  if (order.status === 'CLOSED') throw ApiError.conflict('Order is already closed');
+  if (order.paymentStatus !== 'PAID') throw ApiError.conflict('Order must be paid before closing');
+
+  const prev = order.status;
+  const user = await User.findById(req.user.id).lean();
+  order.status = 'CLOSED';
+  order.updatedBy = req.user.id;
+  order.updatedByName = user?.name;
+  order.updatedByEmail = user?.email;
+  await order.save();
+
+  audit({ req, action: 'ORDER_CLOSED', entity: 'Order', entityId: order._id, meta: { from: prev } });
+  emitToOutlet(order.restaurantId, order.outletId, 'order:updated', order);
+
+  res.json({ success: true, data: order });
 };

@@ -12,8 +12,21 @@ const analytics = require('../controllers/analytics.controller');
 const customerAnalytics = require('../controllers/customerAnalytics.controller');
 const staff = require('../controllers/staff.controller');
 const inventory = require('../controllers/inventory.controller');
+const outlet = require('../controllers/outlet.controller');
 
 router.use(requireAuth, tenantScope);
+
+// Outlets
+router.get('/outlets/table-availability', permit('OWNER', 'MANAGER'), asyncH(outlet.tableAvailability));
+router.get('/outlets', permit('OWNER', 'MANAGER'), asyncH(outlet.list));
+router.post('/outlets', permit('OWNER'), asyncH(outlet.create));
+router.patch('/outlets/:id', permit('OWNER', 'MANAGER'), asyncH(outlet.update));
+router.patch('/outlets/:id/toggle', permit('OWNER'), asyncH(outlet.toggleStatus));
+router.delete('/outlets/:id', permit('OWNER'), asyncH(outlet.remove));
+router.get('/outlets/:id/stats', permit('OWNER', 'MANAGER'), asyncH(outlet.getStats));
+
+// Analytics consolidated (OWNER sees all outlets combined)
+router.get('/analytics/consolidated', permit('OWNER', 'MANAGER'), asyncH(analytics.consolidated));
 
 // Tables & QR  (OWNER/MANAGER manage; WAITER can view)
 router.get('/tables', permit('OWNER', 'MANAGER', 'WAITER'), asyncH(tables.list));
@@ -25,7 +38,7 @@ router.delete('/tables/:id', permit('OWNER'), asyncH(tables.remove));
 // Menu
 router.get('/menu/categories', permit('OWNER', 'MANAGER', 'WAITER', 'KITCHEN'), asyncH(menu.listCategories));
 router.post('/menu/categories', permit('OWNER', 'MANAGER'), asyncH(menu.createCategory));
-router.delete('/menu/categories/:id', permit('OWNER'), asyncH(menu.deleteCategory));
+router.delete('/menu/categories/:id', permit('OWNER', 'MANAGER'), asyncH(menu.deleteCategory));
 router.get('/menu/items', permit('OWNER', 'MANAGER', 'WAITER', 'KITCHEN'), asyncH(menu.listItems));
 router.post('/menu/items', permit('OWNER', 'MANAGER', 'WAITER'), upload.single('image'), asyncH(menu.createItem));
 router.patch('/menu/items/:id', permit('OWNER', 'MANAGER', 'WAITER'), upload.single('image'), asyncH(menu.updateItem));
@@ -34,8 +47,10 @@ router.delete('/menu/items/:id', permit('OWNER'), asyncH(menu.deleteItem));
 // Orders / Kitchen / Billing
 router.get('/orders', permit('OWNER', 'MANAGER', 'WAITER', 'KITCHEN'), asyncH(orders.list));
 router.get('/orders/kitchen-queue', permit('OWNER', 'MANAGER', 'KITCHEN'), asyncH(orders.kitchenQueue));
+router.get('/orders/waiter-queue', permit('OWNER', 'MANAGER', 'WAITER'), asyncH(orders.waiterQueue));
 router.patch('/orders/:id/status', permit('OWNER', 'MANAGER', 'WAITER', 'KITCHEN'), asyncH(orders.updateStatus));
 router.patch('/orders/:id/items/:itemId/status', permit('OWNER', 'MANAGER', 'WAITER', 'KITCHEN'), asyncH(orders.updateItemStatus));
+router.patch('/orders/:id/close', permit('OWNER', 'MANAGER'), asyncH(orders.closeOrder));
 router.get('/orders/:id/receipt', permit('OWNER', 'MANAGER', 'WAITER'), asyncH(orders.orderReceipt));
 router.post('/payments/mark-paid', permit('OWNER', 'MANAGER', 'WAITER'), asyncH(orders.markPaid));
 

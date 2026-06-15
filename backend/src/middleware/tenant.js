@@ -1,12 +1,18 @@
 const ApiError = require('../utils/ApiError');
 const Restaurant = require('../models/Restaurant');
+const Outlet = require('../models/Outlet');
+
+// OWNER's "home" outlet = first created outlet (Main Branch)
+async function ownerMainOutletId(restaurantId) {
+  const o = await Outlet.findOne({ restaurantId, isDeleted: false }).sort({ createdAt: 1 }).lean();
+  return o ? o._id : null;
+}
 
 /**
  * Tenant isolation middleware.
  * - SUPER_ADMIN: no tenant context (manages all tenants through /api/admin).
- * - Everyone else: restaurantId comes ONLY from the verified JWT, never from
- *   the request body/query, so a tenant can never address another tenant's data.
- * Also blocks suspended/deleted restaurants.
+ * - OWNER/MANAGER: scoped to restaurant; sees all outlets.
+ * - WAITER/KITCHEN: scoped to both restaurant AND their assigned outlet.
  */
 async function tenantScope(req, _res, next) {
   try {
@@ -17,19 +23,73 @@ async function tenantScope(req, _res, next) {
       _id: req.user.restaurantId,
       isDeleted: false
     }).lean();
-    if (!restaurant) throw ApiError.forbidden('Restaurant not found');
-    if (restaurant.status !== 'ACTIVE') throw ApiError.forbidden('Restaurant is suspended');
+    if (!restaurant) throw ApiError.forbidden('Restaurant not found', 'RESTAURANT_NOT_FOUND');
+    if (restaurant.status !== 'ACTIVE') throw ApiError.forbidden('Restaurant is suspended. Please contact support.', 'RESTAURANT_SUSPENDED');
 
     req.tenant = restaurant;
+
+    // WAITER/KITCHEN must have a valid active outlet assigned
+    if (['WAITER', 'KITCHEN'].includes(req.user.role)) {
+      if (!req.user.outletId) throw ApiError.forbidden('No outlet assigned to this account', 'NO_OUTLET_ASSIGNED');
+      const outlet = await Outlet.findOne({
+        _id: req.user.outletId,
+        restaurantId: req.user.restaurantId,
+        isDeleted: false
+      }).lean();
+      if (!outlet) throw ApiError.forbidden('Outlet not found. Please contact your main branch.', 'OUTLET_NOT_FOUND');
+      if (outlet.status !== 'ACTIVE') throw ApiError.forbidden('This outlet has been deactivated. Please contact your main branch.', 'OUTLET_INACTIVE');
+      req.outlet = outlet;
+    }
+
     next();
   } catch (e) {
     next(e);
   }
 }
 
-/** Helper: every tenant query MUST be built through this. */
+/**
+ * Standard tenant filter — strict outlet isolation.
+ * - OWNER/MANAGER: restaurantId only, outletId = null (their own items, no outlet leak).
+ * - WAITER/KITCHEN: restaurantId + their outletId (only their outlet's data).
+ */
 function tenantFilter(req, extra = {}) {
-  return { restaurantId: req.user.restaurantId, isDeleted: { $ne: true }, ...extra };
+  const base = { restaurantId: req.user.restaurantId, isDeleted: { $ne: true }, ...extra };
+  if (['WAITER', 'KITCHEN'].includes(req.user.role)) {
+    // Outlet-scoped staff: always their outlet only
+    base.outletId = req.user.outletId;
+  } else if (req.user.role === 'MANAGER' && req.user.outletId) {
+    // MANAGER assigned to an outlet: scoped to their outlet
+    base.outletId = req.user.outletId;
+  } else if (req.user.role === 'OWNER') {
+    // OWNER: all outlets, optionally filtered by ?outletId=
+    const qOutletId = req.query.outletId;
+    if (qOutletId) base.outletId = qOutletId;
+  }
+  return base;
 }
 
-module.exports = { tenantScope, tenantFilter };
+/**
+ * Menu filter — complete isolation between Owner menu and Outlet menus.
+ * - OWNER/MANAGER with no ?outletId: sees only restaurant-level items (outletId=null).
+ * - OWNER/MANAGER with ?outletId: sees only that outlet's items.
+ * - WAITER/KITCHEN: sees only their outlet's items (outletId = their outletId).
+ * No cross-contamination between owner items and outlet items.
+ */
+async function tenantMenuFilter(req, extra = {}) {
+  const base = { restaurantId: req.user.restaurantId, isDeleted: { $ne: true }, ...extra };
+  if (['WAITER', 'KITCHEN', 'MANAGER'].includes(req.user.role) && req.user.outletId) {
+    // Outlet staff see only their outlet's items
+    base.outletId = req.user.outletId;
+  } else {
+    // OWNER: ?outletId= to view a specific outlet, otherwise show Main Branch items
+    const qOutletId = req.query.outletId;
+    if (qOutletId) {
+      base.outletId = qOutletId;
+    } else {
+      base.outletId = await ownerMainOutletId(req.user.restaurantId);
+    }
+  }
+  return base;
+}
+
+module.exports = { tenantScope, tenantFilter, tenantMenuFilter };

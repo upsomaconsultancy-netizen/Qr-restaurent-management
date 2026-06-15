@@ -20,4 +20,11 @@ router.get('/restaurants/:id/users', asyncH(ctrl.listRestaurantUsers));
 router.post('/restaurants/:id/users', asyncH(ctrl.createRestaurantUser));
 router.patch('/restaurants/:id/users/:userId', asyncH(ctrl.updateRestaurantUser));
 
+// Admin outlet management
+router.get('/restaurants/:id/outlets', asyncH(ctrl.listOutlets));
+router.post('/restaurants/:id/outlets', asyncH(ctrl.createOutlet));
+router.patch('/restaurants/:id/outlets/:oid', asyncH(ctrl.updateOutlet));
+router.patch('/restaurants/:id/outlets/:oid/status', asyncH(ctrl.setOutletStatus));
+router.delete('/restaurants/:id/outlets/:oid', asyncH(ctrl.deleteOutlet));
+
 module.exports = router;

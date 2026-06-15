@@ -1,5 +1,6 @@
 const Joi = require('joi');
 const Restaurant = require('../models/Restaurant');
+const Outlet = require('../models/Outlet');
 const User = require('../models/User');
 const Order = require('../models/Order');
 const Table = require('../models/Table');
@@ -53,6 +54,17 @@ exports.createRestaurant = async (req, res) => {
     plan: value.plan, tableLimit: value.tableLimit
   });
 
+  // Auto-create a default "Main Branch" outlet so tables can be created immediately
+  await Outlet.create({
+    restaurantId: restaurant._id,
+    name: 'Main Branch',
+    address: value.address,
+    phone: value.phone,
+    email: value.email,
+    status: 'ACTIVE',
+    tableLimit: 0 // no per-outlet cap — uses restaurant's global tableLimit
+  });
+
   const owner = new User({
     restaurantId: restaurant._id, name: value.ownerName,
     email: value.ownerEmail, role: 'OWNER'
@@ -72,9 +84,11 @@ exports.listRestaurants = async (_req, res) => {
 exports.getRestaurant = async (req, res) => {
   const restaurant = await Restaurant.findOne({ _id: req.params.id, isDeleted: false }).lean();
   if (!restaurant) throw ApiError.notFound('Restaurant not found');
-  const users = await User.find({ restaurantId: req.params.id, isDeleted: false })
-    .select('-passwordHash').lean();
-  res.json({ success: true, data: { restaurant, users } });
+  const [users, outlets] = await Promise.all([
+    User.find({ restaurantId: req.params.id, isDeleted: false }).select('-passwordHash').lean(),
+    Outlet.find({ restaurantId: req.params.id, isDeleted: false }).lean()
+  ]);
+  res.json({ success: true, data: { restaurant, users, outlets } });
 };
 
 exports.updateRestaurant = async (req, res) => {
@@ -183,14 +197,16 @@ exports.softDelete = async (req, res) => {
 };
 
 exports.platformStats = async (_req, res) => {
-  const [total, active, revenueAgg, tables] = await Promise.all([
+  const [total, active, revenueAgg, tables, totalOutlets, activeOutlets] = await Promise.all([
     Restaurant.countDocuments({ isDeleted: false }),
     Restaurant.countDocuments({ isDeleted: false, status: 'ACTIVE' }),
     Order.aggregate([
       { $match: { paymentStatus: 'PAID', isDeleted: false } },
       { $group: { _id: null, revenue: { $sum: '$total' }, orders: { $sum: 1 } } }
     ]),
-    Table.countDocuments({ isDeleted: false })
+    Table.countDocuments({ isDeleted: false }),
+    Outlet.countDocuments({ isDeleted: false }),
+    Outlet.countDocuments({ isDeleted: false, status: 'ACTIVE' })
   ]);
   res.json({
     success: true,
@@ -198,9 +214,70 @@ exports.platformStats = async (_req, res) => {
       totalRestaurants: total,
       activeRestaurants: active,
       inactiveRestaurants: total - active,
+      totalOutlets,
+      activeOutlets,
       totalTablesProvisioned: tables,
       grossOrderRevenue: revenueAgg[0]?.revenue || 0,
       totalPaidOrders: revenueAgg[0]?.orders || 0
     }
   });
+};
+
+// ─── Admin Outlet Management ────────────────────────────────────────────────
+
+exports.listOutlets = async (req, res) => {
+  const outlets = await Outlet.find({ restaurantId: req.params.id, isDeleted: false }).sort('createdAt').lean();
+  res.json({ success: true, data: outlets });
+};
+
+exports.createOutlet = async (req, res) => {
+  const restaurant = await Restaurant.findOne({ _id: req.params.id, isDeleted: false });
+  if (!restaurant) throw ApiError.notFound('Restaurant not found');
+
+  const { name, address, phone, email } = req.body;
+  if (!name || !address) throw ApiError.badRequest('name and address are required');
+
+  const outlet = await Outlet.create({ restaurantId: req.params.id, name, address, phone, email });
+  audit({ req, action: 'OUTLET_CREATED', entity: 'Outlet', entityId: outlet._id });
+  res.status(201).json({ success: true, data: outlet });
+};
+
+exports.updateOutlet = async (req, res) => {
+  const outlet = await Outlet.findOne({ _id: req.params.oid, restaurantId: req.params.id, isDeleted: false });
+  if (!outlet) throw ApiError.notFound('Outlet not found');
+
+  const { name, address, phone, email } = req.body;
+  if (name) outlet.name = name;
+  if (address) outlet.address = address;
+  if (phone !== undefined) outlet.phone = phone;
+  if (email !== undefined) outlet.email = email;
+  await outlet.save();
+
+  audit({ req, action: 'OUTLET_UPDATED', entity: 'Outlet', entityId: outlet._id });
+  res.json({ success: true, data: outlet });
+};
+
+exports.setOutletStatus = async (req, res) => {
+  const { status } = req.body;
+  if (!['ACTIVE', 'INACTIVE'].includes(status)) throw ApiError.badRequest('Invalid status');
+
+  const outlet = await Outlet.findOneAndUpdate(
+    { _id: req.params.oid, restaurantId: req.params.id, isDeleted: false },
+    { status },
+    { new: true }
+  );
+  if (!outlet) throw ApiError.notFound('Outlet not found');
+  audit({ req, action: `OUTLET_${status}`, entity: 'Outlet', entityId: outlet._id });
+  res.json({ success: true, data: outlet });
+};
+
+exports.deleteOutlet = async (req, res) => {
+  const outlet = await Outlet.findOneAndUpdate(
+    { _id: req.params.oid, restaurantId: req.params.id, isDeleted: false },
+    { isDeleted: true, status: 'INACTIVE' },
+    { new: true }
+  );
+  if (!outlet) throw ApiError.notFound('Outlet not found');
+  audit({ req, action: 'OUTLET_DELETED', entity: 'Outlet', entityId: outlet._id });
+  res.json({ success: true });
 };

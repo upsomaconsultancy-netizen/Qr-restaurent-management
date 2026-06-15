@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const paymentSchema = new mongoose.Schema(
   {
     restaurantId: { type: mongoose.Types.ObjectId, ref: 'Restaurant', required: true, index: true },
+    outletId: { type: mongoose.Types.ObjectId, ref: 'Outlet', index: true },
     sessionId: { type: mongoose.Types.ObjectId, ref: 'TableSession', index: true },
     orderIds: [{ type: mongoose.Types.ObjectId, ref: 'Order' }],
     amount: { type: Number, required: true },
