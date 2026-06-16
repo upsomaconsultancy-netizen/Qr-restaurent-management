@@ -1,8 +1,8 @@
 import {
   Component, Input, OnChanges, OnDestroy, OnInit, SimpleChanges,
-  computed, inject, signal
+  computed, inject, signal, PLATFORM_ID
 } from '@angular/core';
-import { CommonModule, DecimalPipe } from '@angular/common';
+import { isPlatformBrowser, CommonModule, DecimalPipe } from '@angular/common';
 import { FormsModule, ReactiveFormsModule, FormControl } from '@angular/forms';
 import { Subject } from 'rxjs';
 import { debounceTime, distinctUntilChanged, switchMap, takeUntil } from 'rxjs/operators';
@@ -690,9 +690,11 @@ export class CustomerMenuComponent implements OnInit, OnChanges, OnDestroy {
 
   protected readonly Math = Math;
 
-  private api     = inject(ApiService);
-  private sock    = inject(SocketService);
-  private destroy = new Subject<void>();
+  private api        = inject(ApiService);
+  private sock       = inject(SocketService);
+  private destroy    = new Subject<void>();
+  private platformId = inject(PLATFORM_ID);
+  private isBrowser  = isPlatformBrowser(this.platformId);
 
   loading              = signal(true);
   data                 = signal<any>(null);
@@ -829,6 +831,7 @@ export class CustomerMenuComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   private restoreCustomerSession(_sessionToken: string) {
+    if (!this.isBrowser) return;
     const stored = localStorage.getItem(this.tokenKey());
     if (!stored) return;
 
@@ -840,7 +843,7 @@ export class CustomerMenuComponent implements OnInit, OnChanges, OnDestroy {
         this.subscribeCustomerSocket(stored);
       },
       error: () => {
-        localStorage.removeItem(this.tokenKey());
+        if (this.isBrowser) localStorage.removeItem(this.tokenKey());
         this.customerToken.set(null);
       }
     });
@@ -869,7 +872,7 @@ export class CustomerMenuComponent implements OnInit, OnChanges, OnDestroy {
     }).subscribe({
       next: ({ data }) => {
         const token = data.customerToken;
-        localStorage.setItem(this.tokenKey(), token);
+        if (this.isBrowser) localStorage.setItem(this.tokenKey(), token);
         this.customerToken.set(token);
         if (data.pastOrders?.length) this.pastOrders.set(data.pastOrders);
         this.submittingIdentity.set(false);
@@ -893,7 +896,7 @@ export class CustomerMenuComponent implements OnInit, OnChanges, OnDestroy {
       orderType: this.orderType(),
       items: this.cart().map(l => ({ menuItemId: l.item._id, qty: l.qty }))
     }).subscribe({
-      next: ({ data }) => { this.bill.set(data.bill); this.cart.set([]); this.placing.set(false); },
+      next: () => { this.cart.set([]); this.placing.set(false); },
       error: (e: any) => { this.placing.set(false); alert(e?.error?.message || 'Failed to place order. Please try again.'); }
     });
   }

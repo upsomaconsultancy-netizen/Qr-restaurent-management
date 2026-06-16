@@ -4,6 +4,7 @@ const Outlet = require('../models/Outlet');
 const ApiError = require('../utils/ApiError');
 const { tenantMenuFilter } = require('../middleware/tenant');
 const { uploadImage, deleteImage } = require('../config/cloudinary');
+const { invalidateMenuCache } = require('./public.controller');
 
 async function ownerOutletId(restaurantId) {
   const outlet = await Outlet.findOne({ restaurantId, isDeleted: false }).sort({ createdAt: 1 }).lean();
@@ -30,6 +31,7 @@ exports.createCategory = async (req, res) => {
     parentId: req.body.parentId || null,
     sortOrder: req.body.sortOrder || 0
   });
+  invalidateMenuCache(outletId).catch(() => {});
   res.status(201).json({ success: true, data: cat });
 };
 
@@ -51,6 +53,7 @@ exports.deleteCategory = async (req, res) => {
   });
 
   if (!removed) throw ApiError.notFound('Category not found. It may have already been deleted.');
+  invalidateMenuCache(removed.outletId).catch(() => {});
   res.json({ success: true });
 };
 
@@ -89,6 +92,7 @@ exports.createItem = async (req, res) => {
   }
 
   await item.save();
+  invalidateMenuCache(item.outletId).catch(() => {});
   res.status(201).json({ success: true, data: item });
 };
 
@@ -110,6 +114,7 @@ exports.updateItem = async (req, res) => {
   }
 
   await item.save();
+  invalidateMenuCache(item.outletId).catch(() => {});
   res.json({ success: true, data: item });
 };
 
@@ -119,6 +124,7 @@ exports.deleteItem = async (req, res) => {
     { isDeleted: true }
   );
   if (!item) throw ApiError.notFound('Menu item not found. It may have already been deleted.');
+  invalidateMenuCache(item.outletId).catch(() => {});
   res.json({ success: true });
 };
 

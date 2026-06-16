@@ -2,18 +2,34 @@
   "buildCommand": "npm run build -- --configuration production",
   "outputDirectory": "dist/ros/browser",
   "framework": null,
-  "rewrites": [
-    { "source": "/cronjob_82482.html", "destination": "/cronjob_82482.html" },
-    { "source": "/(.*)", "destination": "/index.html" }
-  ],
-  "headers": [
+  "functions": {
+    "api/ssr.js": {
+      "runtime": "nodejs20.x",
+      "includeFiles": "dist/ros/server/**"
+    }
+  },
+  "routes": [
     {
-      "source": "/assets/(.*)",
-      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+      "src": "/cronjob_82482.html",
+      "dest": "/cronjob_82482.html"
     },
     {
-      "source": "/(.*\\.js|.*\\.css)",
-      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+      "src": "/assets/(.*)",
+      "dest": "/assets/$1",
+      "headers": { "cache-control": "public, max-age=31536000, immutable" }
+    },
+    {
+      "src": "/(.*\\.(js|css|ico|png|jpg|svg|woff2?))",
+      "dest": "/$1",
+      "headers": { "cache-control": "public, max-age=31536000, immutable" }
+    },
+    {
+      "src": "/m/(.*)",
+      "dest": "/api/ssr"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
     }
   ]
 }

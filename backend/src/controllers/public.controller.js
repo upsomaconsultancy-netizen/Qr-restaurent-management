@@ -12,6 +12,20 @@ const ApiError = require('../utils/ApiError');
 const { priceOrder, sessionBill, customerBill } = require('../services/billing.service');
 const { emitToOutlet, emitToCustomer } = require('../sockets');
 const { audit } = require('../utils/audit');
+const redis = require('../config/redis');
+
+const MENU_TTL = 300; // 5 minutes
+
+function menuCacheKey(outletId) {
+  return `menu:${outletId}`;
+}
+
+async function invalidateMenuCache(outletId) {
+  await redis.del(menuCacheKey(outletId));
+}
+
+exports.invalidateMenuCache = invalidateMenuCache;
+
 
 /** Returns up to 5 past completed orders for this mobile (excluding current session). */
 async function getPastOrders(restaurantId, outletId, mobileNumber, excludeSessionId) {
@@ -190,11 +204,19 @@ exports.resolveQr = async (req, res) => {
     });
   }
 
-  // Fetch strictly this outlet's items only — no cross-outlet or owner menu fallback
-  const [categories, items] = await Promise.all([
-    Category.find({ restaurantId: restaurant._id, outletId: table.outletId, isDeleted: false, isActive: true }).sort('sortOrder').lean(),
-    MenuItem.find({ restaurantId: restaurant._id, outletId: table.outletId, isDeleted: false, isAvailable: true }).lean()
-  ]);
+  // Fetch strictly this outlet's items only — served from Redis cache (5 min TTL)
+  let categories, items;
+  const cacheKey = menuCacheKey(table.outletId);
+  const cached = await redis.get(cacheKey);
+  if (cached) {
+    ({ categories, items } = JSON.parse(cached));
+  } else {
+    [categories, items] = await Promise.all([
+      Category.find({ restaurantId: restaurant._id, outletId: table.outletId, isDeleted: false, isActive: true }).sort('sortOrder').lean(),
+      MenuItem.find({ restaurantId: restaurant._id, outletId: table.outletId, isDeleted: false, isAvailable: true }).lean()
+    ]);
+    redis.setex(cacheKey, MENU_TTL, JSON.stringify({ categories, items })).catch(() => {});
+  }
 
   res.json({
     success: true,
@@ -349,16 +371,19 @@ exports.placeOrder = async (req, res) => {
   priceOrder(order, restaurant.taxPercent);
   await order.save();
 
+  // Respond immediately — socket emit + bill + audit run async in background
+  res.status(201).json({ success: true, data: { order } });
+
+  // Background work (no await — client already has response)
   cs.lastActivity = new Date();
-  await cs.save();
+  cs.save().catch(() => {});
 
   audit({ req, restaurantId: restaurant._id, action: 'ORDER_CREATED', entity: 'Order', entityId: order._id });
   emitToOutlet(restaurant._id.toString(), tableSession.outletId.toString(), 'order:new', order);
 
-  const bill = await customerBill(cs._id);
-  emitToCustomer(cs.sessionToken, 'bill:updated', bill);
-
-  res.status(201).json({ success: true, data: { order, bill } });
+  customerBill(cs._id)
+    .then((bill) => emitToCustomer(cs.sessionToken, 'bill:updated', bill))
+    .catch(() => {});
 };
 
 /**
