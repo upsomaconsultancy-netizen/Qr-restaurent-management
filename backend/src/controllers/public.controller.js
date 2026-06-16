@@ -61,6 +61,94 @@ async function getPastOrders(restaurantId, outletId, mobileNumber, excludeSessio
  * Customer scans QR → get restaurant info, menu, sessionToken.
  * Also checks table capacity — if full, returns tableFull: true.
  */
+/**
+ * GET /api/public/search?sessionToken=&q=
+ * Atlas Search over menu items for the outlet resolved from the session token.
+ * Tenant isolation: restaurantId + outletId are derived server-side from the token.
+ */
+exports.searchMenu = async (req, res) => {
+  const { sessionToken, q } = req.query;
+  if (!sessionToken) throw ApiError.badRequest('sessionToken is required');
+
+  const query = typeof q === 'string' ? q.trim() : '';
+  if (!query) return res.json({ success: true, data: [] });
+
+  const session = await TableSession.findOne({ sessionToken, status: 'OPEN' }).lean();
+  if (!session) throw ApiError.notFound('Session not found or expired');
+
+  const { restaurantId, outletId } = session;
+
+  // Use Atlas Search if available, fall back to regex for local dev
+  let items;
+  try {
+    items = await MenuItem.aggregate([
+      {
+        $search: {
+          index: 'menu_search',
+          compound: {
+            must: [
+              {
+                equals: {
+                  path: 'restaurantId',
+                  value: restaurantId
+                }
+              },
+              {
+                equals: {
+                  path: 'outletId',
+                  value: outletId
+                }
+              }
+            ],
+            should: [
+              {
+                autocomplete: {
+                  query,
+                  path: 'name',
+                  fuzzy: { maxEdits: 1 },
+                  score: { boost: { value: 3 } }
+                }
+              },
+              {
+                text: {
+                  query,
+                  path: ['name', 'description'],
+                  fuzzy: { maxEdits: 1 }
+                }
+              }
+            ],
+            minimumShouldMatch: 1
+          }
+        }
+      },
+      { $match: { isDeleted: false, isAvailable: true } },
+      { $limit: 20 },
+      {
+        $project: {
+          name: 1, description: 1, price: 1, imageUrl: 1,
+          foodType: 1, spicyLevel: 1, categoryId: 1,
+          variants: 1, taxes: 1
+        }
+      }
+    ]);
+  } catch (atlasErr) {
+    // Atlas Search not configured (local dev) — fall back to regex
+    const regex = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    items = await MenuItem.find({
+      restaurantId,
+      outletId,
+      isDeleted: false,
+      isAvailable: true,
+      $or: [{ name: regex }, { description: regex }]
+    })
+      .limit(20)
+      .select('name description price imageUrl foodType spicyLevel categoryId variants taxes')
+      .lean();
+  }
+
+  res.json({ success: true, data: items });
+};
+
 exports.resolveQr = async (req, res) => {
   const table = await Table.findOne({ qrCode: req.params.qrToken, isDeleted: false, isActive: true }).lean();
   if (!table) throw ApiError.notFound('This QR code is invalid or has expired. Please ask staff for a new QR code.');

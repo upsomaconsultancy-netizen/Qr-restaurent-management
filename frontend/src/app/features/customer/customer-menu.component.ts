@@ -1,9 +1,12 @@
 import {
-  Component, Input, OnChanges, OnInit, SimpleChanges,
+  Component, Input, OnChanges, OnDestroy, OnInit, SimpleChanges,
   computed, inject, signal
 } from '@angular/core';
 import { CommonModule, DecimalPipe } from '@angular/common';
-import { FormsModule } from '@angular/forms';
+import { FormsModule, ReactiveFormsModule, FormControl } from '@angular/forms';
+import { Subject } from 'rxjs';
+import { debounceTime, distinctUntilChanged, switchMap, takeUntil } from 'rxjs/operators';
+import { of } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { SocketService } from '../../core/services/socket.service';
 
@@ -19,7 +22,7 @@ const CUSTOMER_TOKEN_PREFIX = 'ros_cust_token_';
 
 @Component({
   standalone: true,
-  imports: [CommonModule, DecimalPipe, FormsModule],
+  imports: [CommonModule, DecimalPipe, FormsModule, ReactiveFormsModule],
   template: `
     <!-- ── Loading ── -->
     @if (loading()) {
@@ -130,60 +133,86 @@ const CUSTOMER_TOKEN_PREFIX = 'ros_cust_token_';
           </div>
         </header>
 
-        <!-- Category Pills -->
-        <div class="cm-cats-wrap">
-          <div class="cm-cats">
-            <button class="cm-cat-pill" [class.active]="activeCat() === ''" (click)="activeCat.set('')">All</button>
-            @for (c of data()!.categories; track c._id) {
-              <button class="cm-cat-pill" [class.active]="activeCat() === c._id" (click)="activeCat.set(c._id)">{{ c.name }}</button>
+        <!-- Search Bar -->
+        <div class="cm-search-wrap">
+          <div class="cm-search-inner">
+            <svg class="cm-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input class="cm-search-input" type="search" placeholder="Search menu items…"
+              [formControl]="searchControl" autocomplete="off">
+            @if (searchControl.value) {
+              <button class="cm-search-clear" (click)="clearSearch()" aria-label="Clear search">✕</button>
             }
           </div>
         </div>
 
-        <div class="cm-body">
-          <div class="cm-items-count">{{ visibleItems().length }} item{{ visibleItems().length !== 1 ? 's' : '' }}</div>
-
-          @for (item of visibleItems(); track item._id) {
-            <div class="cm-item-card">
-              <div class="cm-item-body">
-                <div class="cm-item-veg-dot">
-                  @if (item.foodType === 'NON_VEG') {
-                    <svg width="10" height="10" viewBox="0 0 10 10"><rect width="10" height="10" rx="2" fill="#c0392b"/><polygon points="5,2 9,8 1,8" fill="white"/></svg>
-                  } @else {
-                    <svg width="10" height="10" viewBox="0 0 10 10"><rect width="10" height="10" rx="2" fill="#27ae60"/><circle cx="5" cy="5" r="3" fill="white"/></svg>
-                  }
-                </div>
-                <div class="cm-item-text">
-                  <div class="cm-item-name">{{ item.name }}</div>
-                  @if (item.description) { <div class="cm-item-desc">{{ item.description }}</div> }
-                  <div class="cm-item-meta">
-                    @if (item.spicyLevel) { <span class="cm-spicy">{{ '🌶️'.repeat(Math.min(item.spicyLevel,3)) }}</span> }
-                    @if (item.taxes?.length) { <span class="cm-tax-note">+ taxes</span> }
-                  </div>
-                  <div class="cm-item-price">₹{{ item.price }}</div>
-                </div>
-                <div class="cm-item-actions">
-                  @if (item.imageUrl) {
-                    <img class="cm-item-img" [src]="item.imageUrl" [alt]="item.name" loading="lazy">
-                  } @else {
-                    <div class="cm-item-img-ph">🍴</div>
-                  }
-                  @if (getQty(item) === 0) {
-                    <button class="cm-add-btn" (click)="add(item)">ADD</button>
-                  } @else {
-                    <div class="cm-qty-ctrl">
-                      <button class="cm-qty-btn" (click)="remove(item)">−</button>
-                      <span class="cm-qty-num">{{ getQty(item) }}</span>
-                      <button class="cm-qty-btn" (click)="add(item)">+</button>
-                    </div>
-                  }
-                </div>
-              </div>
+        <!-- Category Pills — hidden during active search -->
+        @if (!searchQuery()) {
+          <div class="cm-cats-wrap">
+            <div class="cm-cats">
+              <button class="cm-cat-pill" [class.active]="activeCat() === ''" (click)="activeCat.set('')">All</button>
+              @for (c of data()!.categories; track c._id) {
+                <button class="cm-cat-pill" [class.active]="activeCat() === c._id" (click)="activeCat.set(c._id)">{{ c.name }}</button>
+              }
             </div>
+          </div>
+        }
+
+        <div class="cm-body">
+          @if (searchQuery()) {
+            <div class="cm-items-count">{{ searchResults().length }} result{{ searchResults().length !== 1 ? 's' : '' }} for "{{ searchQuery() }}"</div>
+          } @else {
+            <div class="cm-items-count">{{ visibleItems().length }} item{{ visibleItems().length !== 1 ? 's' : '' }}</div>
           }
 
-          @if (visibleItems().length === 0) {
-            <div class="cm-empty-cat"><p>No items in this category</p></div>
+          @for (item of activeItems(); track item._id) {
+              <div class="cm-item-card">
+                <div class="cm-item-body">
+                  <div class="cm-item-veg-dot">
+                    @if (item.foodType === 'NON_VEG') {
+                      <svg width="10" height="10" viewBox="0 0 10 10"><rect width="10" height="10" rx="2" fill="#c0392b"/><polygon points="5,2 9,8 1,8" fill="white"/></svg>
+                    } @else {
+                      <svg width="10" height="10" viewBox="0 0 10 10"><rect width="10" height="10" rx="2" fill="#27ae60"/><circle cx="5" cy="5" r="3" fill="white"/></svg>
+                    }
+                  </div>
+                  <div class="cm-item-text">
+                    <div class="cm-item-name">{{ item.name }}</div>
+                    @if (item.description) { <div class="cm-item-desc">{{ item.description }}</div> }
+                    <div class="cm-item-meta">
+                      @if (item.spicyLevel) { <span class="cm-spicy">{{ '🌶️'.repeat(Math.min(item.spicyLevel,3)) }}</span> }
+                      @if (item.taxes?.length) { <span class="cm-tax-note">+ taxes</span> }
+                    </div>
+                    <div class="cm-item-price">₹{{ item.price }}</div>
+                  </div>
+                  <div class="cm-item-actions">
+                    @if (item.imageUrl) {
+                      <img class="cm-item-img" [src]="item.imageUrl" [alt]="item.name" loading="lazy">
+                    } @else {
+                      <div class="cm-item-img-ph">🍴</div>
+                    }
+                    @if (getQty(item) === 0) {
+                      <button class="cm-add-btn" (click)="add(item)">ADD</button>
+                    } @else {
+                      <div class="cm-qty-ctrl">
+                        <button class="cm-qty-btn" (click)="remove(item)">−</button>
+                        <span class="cm-qty-num">{{ getQty(item) }}</span>
+                        <button class="cm-qty-btn" (click)="add(item)">+</button>
+                      </div>
+                    }
+                  </div>
+                </div>
+              </div>
+            }
+
+          @if (activeItems().length === 0) {
+            <div class="cm-empty-cat">
+              @if (searchQuery()) {
+                <p>No items found for "{{ searchQuery() }}"</p>
+              } @else {
+                <p>No items in this category</p>
+              }
+            </div>
           }
 
           <!-- Bill Section -->
@@ -484,8 +513,21 @@ const CUSTOMER_TOKEN_PREFIX = 'ros_cust_token_';
     .cm-opt-desc { font-size:.78rem; opacity:.8; }
     .cm-delivery-soon { margin-top:1.25rem; font-size:.78rem; color:var(--text-muted); }
 
+    /* Search Bar */
+    .cm-search-wrap { background:var(--surface); border-bottom:1px solid var(--border); padding:.625rem 1rem; position:sticky; top:65px; z-index:41; }
+    .cm-search-inner { position:relative; display:flex; align-items:center; background:var(--bg); border:1.5px solid var(--border); border-radius:var(--radius-sm); transition:border-color .18s; }
+    .cm-search-inner:focus-within { border-color:var(--primary); }
+    .cm-search-icon { position:absolute; left:.7rem; color:var(--text-muted); flex-shrink:0; pointer-events:none; }
+    .cm-search-input { flex:1; border:none; background:transparent; padding:.6rem .6rem .6rem 2.25rem; font-size:.875rem; color:var(--text); outline:none; min-width:0; }
+    .cm-search-input::placeholder { color:var(--text-muted); }
+    .cm-search-input::-webkit-search-cancel-button { display:none; }
+    .cm-search-clear { background:none; border:none; padding:.4rem .65rem; color:var(--text-muted); cursor:pointer; font-size:.8rem; line-height:1; }
+    .cm-search-clear:hover { color:var(--text); }
+    .cm-search-spinner { width:16px; height:16px; border:2px solid var(--border); border-top-color:var(--primary); border-radius:50%; animation:spin .7s linear infinite; margin-right:.65rem; flex-shrink:0; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+
     /* Categories */
-    .cm-cats-wrap { background:var(--surface); border-bottom:1px solid var(--border); position:sticky; top:65px; z-index:40; }
+    .cm-cats-wrap { background:var(--surface); border-bottom:1px solid var(--border); position:sticky; top:112px; z-index:40; }
     .cm-cats { display:flex; gap:.5rem; padding:.75rem 1rem; overflow-x:auto; scrollbar-width:none; }
     .cm-cats::-webkit-scrollbar { display:none; }
     .cm-cat-pill { padding:.4rem .9rem; background:var(--bg); border:1px solid var(--border); border-radius:2rem; font-size:.8rem; font-weight:500; color:var(--text-muted); cursor:pointer; transition:all .18s; white-space:nowrap; flex-shrink:0; }
@@ -643,13 +685,14 @@ const CUSTOMER_TOKEN_PREFIX = 'ros_cust_token_';
     }
   `]
 })
-export class CustomerMenuComponent implements OnInit, OnChanges {
+export class CustomerMenuComponent implements OnInit, OnChanges, OnDestroy {
   @Input() qrToken!: string;
 
   protected readonly Math = Math;
 
-  private api  = inject(ApiService);
-  private sock = inject(SocketService);
+  private api     = inject(ApiService);
+  private sock    = inject(SocketService);
+  private destroy = new Subject<void>();
 
   loading              = signal(true);
   data                 = signal<any>(null);
@@ -668,6 +711,11 @@ export class CustomerMenuComponent implements OnInit, OnChanges {
   pastOrders           = signal<any[]>([]);
   showPaymentComingSoon = false;
 
+  searchControl  = new FormControl('');
+  searchQuery    = signal<string>('');
+  searchResults  = signal<MenuItem[]>([]);
+  searchLoading  = signal(false);
+
   custName   = '';
   custMobile = '';
 
@@ -682,6 +730,11 @@ export class CustomerMenuComponent implements OnInit, OnChanges {
     (this.data()?.items ?? []).filter((i: MenuItem) =>
       !this.activeCat() || i.categoryId === this.activeCat()
     )
+  );
+
+  /** Items shown in the list — search results when query is active, filtered menu otherwise. */
+  activeItems = computed(() =>
+    this.searchQuery() ? this.searchResults() : this.visibleItems()
   );
   cartCount = computed(() => this.cart().reduce((s, l) => s + l.qty, 0));
   cartTotal = computed(() =>
@@ -698,8 +751,51 @@ export class CustomerMenuComponent implements OnInit, OnChanges {
   ngOnChanges(c: SimpleChanges) {
     if (c['qrToken'] && this.qrToken) this.fetchMenu();
   }
+
   ngOnInit() {
     if (this.qrToken && !this.data()) this.fetchMenu();
+    this.initSearch();
+  }
+
+  ngOnDestroy() {
+    this.destroy.next();
+    this.destroy.complete();
+  }
+
+  private initSearch() {
+    this.searchControl.valueChanges.pipe(
+      debounceTime(300),
+      distinctUntilChanged(),
+      switchMap(term => {
+        const q = term?.trim() ?? '';
+        this.searchQuery.set(q);
+        if (!q) {
+          this.searchLoading.set(false);
+          this.searchResults.set([]);
+          return of(null);
+        }
+        this.searchLoading.set(true);
+        const sessionToken = this.data()?.sessionToken;
+        if (!sessionToken) { this.searchLoading.set(false); return of(null); }
+        return this.api.get<MenuItem[]>('/public/search', { sessionToken, q });
+      }),
+      takeUntil(this.destroy)
+    ).subscribe({
+      next: res => {
+        this.searchLoading.set(false);
+        if (res) this.searchResults.set(res.data);
+      },
+      error: () => {
+        this.searchLoading.set(false);
+        this.searchResults.set([]);
+      }
+    });
+  }
+
+  clearSearch() {
+    this.searchControl.setValue('');
+    this.searchQuery.set('');
+    this.searchResults.set([]);
   }
 
   private fetchMenu() {

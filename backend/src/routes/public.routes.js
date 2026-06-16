@@ -4,6 +4,7 @@ const ctrl = require('../controllers/public.controller');
 const { publicOrderLimiter } = require('../middleware/rateLimit');
 
 // Customer QR flow — no login required
+router.get('/search',                       asyncH(ctrl.searchMenu));
 router.get('/qr/:qrToken',                  asyncH(ctrl.resolveQr));
 router.post('/customer-session',            publicOrderLimiter, asyncH(ctrl.createCustomerSession));
 router.post('/orders',                      publicOrderLimiter, asyncH(ctrl.placeOrder));
