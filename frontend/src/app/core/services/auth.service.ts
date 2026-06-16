@@ -1,4 +1,5 @@
-import { Injectable, inject, signal, computed } from '@angular/core';
+import { Injectable, inject, signal, computed, PLATFORM_ID } from '@angular/core';
+import { isPlatformBrowser } from '@angular/common';
 import { Router } from '@angular/router';
 import { tap } from 'rxjs';
 import { ApiService } from './api.service';
@@ -12,11 +13,12 @@ export interface SessionUser {
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
-  private api = inject(ApiService);
-  private router = inject(Router);
+  private api        = inject(ApiService);
+  private router     = inject(Router);
+  private platformId = inject(PLATFORM_ID);
 
-  readonly user  = signal<SessionUser | null>(this.restoreUser());
-  readonly token = signal<string | null>(localStorage.getItem('ros_token'));
+  readonly user       = signal<SessionUser | null>(this.restoreUser());
+  readonly token      = signal<string | null>(this.isBrowser() ? localStorage.getItem('ros_token') : null);
   readonly isLoggedIn = computed(() => !!this.token());
 
   login(email: string, password: string) {
@@ -24,8 +26,10 @@ export class AuthService {
       tap(({ data }) => {
         this.token.set(data.accessToken);
         this.user.set(data.user);
-        localStorage.setItem('ros_token', data.accessToken);
-        localStorage.setItem('ros_user', JSON.stringify(data.user));
+        if (this.isBrowser()) {
+          localStorage.setItem('ros_token', data.accessToken);
+          localStorage.setItem('ros_user', JSON.stringify(data.user));
+        }
       })
     );
   }
@@ -40,12 +44,13 @@ export class AuthService {
   logoutWithMessage(message: string) {
     this.api.post('/auth/logout', {}).subscribe();
     this.clearSession();
-    sessionStorage.setItem('ros_logout_msg', message);
+    if (this.isBrowser()) sessionStorage.setItem('ros_logout_msg', message);
     this.router.navigateByUrl('/login');
   }
 
   /** Consume and return the pending logout message (called once by login page). */
   consumeLogoutMessage(): string | null {
+    if (!this.isBrowser()) return null;
     const msg = sessionStorage.getItem('ros_logout_msg');
     if (msg) sessionStorage.removeItem('ros_logout_msg');
     return msg;
@@ -57,14 +62,21 @@ export class AuthService {
     return '/dashboard';
   }
 
+  private isBrowser(): boolean {
+    return isPlatformBrowser(this.platformId);
+  }
+
   private clearSession() {
-    localStorage.removeItem('ros_token');
-    localStorage.removeItem('ros_user');
+    if (this.isBrowser()) {
+      localStorage.removeItem('ros_token');
+      localStorage.removeItem('ros_user');
+    }
     this.token.set(null);
     this.user.set(null);
   }
 
   private restoreUser(): SessionUser | null {
+    if (!isPlatformBrowser(inject(PLATFORM_ID))) return null;
     try { return JSON.parse(localStorage.getItem('ros_user') || 'null'); } catch { return null; }
   }
 }
