@@ -774,7 +774,7 @@ export class CustomerMenuComponent implements OnInit, OnChanges, OnDestroy {
           this.searchResults.set([]);
           return of(null);
         }
-        this.searchLoading.set(true);
+        // this.searchLoading.set(true);
         const sessionToken = this.data()?.sessionToken;
         if (!sessionToken) { this.searchLoading.set(false); return of(null); }
         return this.api.get<MenuItem[]>('/public/search', { sessionToken, q });
@@ -782,11 +782,11 @@ export class CustomerMenuComponent implements OnInit, OnChanges, OnDestroy {
       takeUntil(this.destroy)
     ).subscribe({
       next: res => {
-        this.searchLoading.set(false);
+        // this.searchLoading.set(false);
         if (res) this.searchResults.set(res.data);
       },
       error: () => {
-        this.searchLoading.set(false);
+        // this.searchLoading.set(false);
         this.searchResults.set([]);
       }
     });

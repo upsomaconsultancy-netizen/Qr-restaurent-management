@@ -797,12 +797,12 @@ Chart.register(...registerables);
 
             <!-- Bill-level taxes -->
             <div style="background:#fff;border-radius:12px;box-shadow:0 1px 6px rgba(0,0,0,.08);padding:20px;">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-                <div>
+              <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:16px;">
+                <div style="min-width:0;flex:1;">
                   <div style="font-weight:700;font-size:15px;">Bill Taxes</div>
                   <div style="font-size:12px;color:#6b7280;margin-top:2px;">These taxes are applied once on the full bill total (not per item)</div>
                 </div>
-                <button (click)="addBillTax()" style="background:#4f46e5;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:12px;cursor:pointer;font-weight:600;">+ Add Tax</button>
+                <button (click)="addBillTax()" style="background:#4f46e5;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:12px;cursor:pointer;font-weight:600;flex-shrink:0;">+ Add Tax</button>
               </div>
 
               @if (billTaxRows().length === 0) {
@@ -812,35 +812,41 @@ Chart.register(...registerables);
               }
 
               @for (tax of billTaxRows(); track $index) {
-                <div style="display:grid;grid-template-columns:1fr 120px 130px auto auto;gap:8px;align-items:center;margin-bottom:10px;">
-                  <input
-                    [value]="tax.name"
-                    (input)="updateBillTaxField($index, 'name', $any($event.target).value)"
-                    placeholder="Tax name (e.g. GST, CGST)"
-                    style="padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;width:100%;box-sizing:border-box;">
-                  <select
-                    [value]="tax.type"
-                    (change)="updateBillTaxField($index, 'type', $any($event.target).value)"
-                    style="padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;background:#fff;width:100%;box-sizing:border-box;">
-                    <option value="PERCENTAGE">% of Bill</option>
-                    <option value="FLAT">&#8377; Flat</option>
-                  </select>
-                  <div style="position:relative;">
-                    <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#6b7280;font-size:13px;pointer-events:none;">
-                      {{ tax.type === 'FLAT' ? '₹' : '%' }}
-                    </span>
+                <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid #f3f4f6;">
+                  <!-- Row 1: Name + delete -->
+                  <div style="display:flex;align-items:center;gap:8px;">
                     <input
-                      type="number"
-                      min="0"
-                      [value]="tax.rate"
-                      (input)="updateBillTaxField($index, 'rate', +$any($event.target).value)"
-                      style="padding:8px 10px 8px 26px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;width:100%;box-sizing:border-box;">
+                      [value]="tax.name"
+                      (input)="updateBillTaxField($index, 'name', $any($event.target).value)"
+                      placeholder="Tax name (e.g. GST, CGST)"
+                      style="flex:1;min-width:0;padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;box-sizing:border-box;">
+                    <button (click)="removeBillTax($index)" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:18px;padding:0 4px;line-height:1;flex-shrink:0;">&#x2715;</button>
                   </div>
-                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;font-size:12px;color:#374151;">
-                    <input type="checkbox" [checked]="tax.enabled !== false" (change)="updateBillTaxField($index, 'enabled', $any($event.target).checked)" style="width:15px;height:15px;accent-color:#4f46e5;cursor:pointer;">
-                    Active
-                  </label>
-                  <button (click)="removeBillTax($index)" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:18px;padding:0 4px;line-height:1;">&#x2715;</button>
+                  <!-- Row 2: Type + Rate + Active -->
+                  <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;">
+                    <select
+                      [value]="tax.type"
+                      (change)="updateBillTaxField($index, 'type', $any($event.target).value)"
+                      style="flex:1;min-width:110px;padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;background:#fff;box-sizing:border-box;">
+                      <option value="PERCENTAGE">% of Bill</option>
+                      <option value="FLAT">&#8377; Flat</option>
+                    </select>
+                    <div style="position:relative;flex:1;min-width:110px;">
+                      <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#6b7280;font-size:13px;pointer-events:none;">
+                        {{ tax.type === 'FLAT' ? '₹' : '%' }}
+                      </span>
+                      <input
+                        type="number"
+                        min="0"
+                        [value]="tax.rate"
+                        (input)="updateBillTaxField($index, 'rate', +$any($event.target).value)"
+                        style="width:100%;padding:8px 10px 8px 26px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;box-sizing:border-box;">
+                    </div>
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;font-size:12px;color:#374151;flex-shrink:0;">
+                      <input type="checkbox" [checked]="tax.enabled !== false" (change)="updateBillTaxField($index, 'enabled', $any($event.target).checked)" style="width:15px;height:15px;accent-color:#4f46e5;cursor:pointer;">
+                      Active
+                    </label>
+                  </div>
                 </div>
               }
 
