@@ -18,9 +18,21 @@
       "headers": { "cache-control": "public, max-age=31536000, immutable" }
     },
     {
-      "src": "/(.*\\.(js|css|ico|png|jpg|svg|woff2?|mp4|webm))",
+      "src": "/(.*\\.(js|css|ico|png|jpg|jpeg|gif|webp|avif|svg|woff2?|mp4|webm))",
       "dest": "/$1",
       "headers": { "cache-control": "public, max-age=31536000, immutable" }
+    },
+    {
+      "src": "/",
+      "dest": "/api/ssr"
+    },
+    {
+      "src": "/privacy-policy/?",
+      "dest": "/api/ssr"
+    },
+    {
+      "src": "/terms/?",
+      "dest": "/api/ssr"
     },
     {
       "src": "/m/(.*)",

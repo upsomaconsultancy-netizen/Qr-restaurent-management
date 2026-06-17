@@ -186,6 +186,20 @@ interface Faq { q: string; a: string; }
         </div>
       </section>
 
+      <!-- ── Why QR ordering (infographic) ── -->
+      <section class="lp-why">
+        <div class="lp-head reveal">
+          <span class="lp-kicker">Why it works</span>
+          <h2>Why set up a QR ordering system?</h2>
+          <p>The benefits add up fast — for your guests and your bottom line.</p>
+        </div>
+        <div class="lp-why-img reveal">
+          <img src="qr2.jpg"
+            alt="Benefits of a QR code ordering system — higher ordering efficiency, better customer experience, order accuracy, more sales, order analytics and easy menu updates"
+            width="600" height="560" loading="lazy" />
+        </div>
+      </section>
+
       <!-- ── Pricing ── -->
       <section id="pricing" class="lp-section">
         <div class="lp-head reveal">
@@ -488,6 +502,14 @@ interface Faq { q: string; a: string; }
     .lp-step-tag { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #e8542f; }
     .lp-step h3 { font-size: 1.05rem; margin: .25rem 0 .4rem; }
     .lp-step p { color: #5a5d64; font-size: .92rem; line-height: 1.55; margin: 0; }
+
+    /* Why QR ordering (infographic) */
+    .lp-why { max-width: 1180px; margin: 0 auto; padding: 4.5rem 1.25rem; }
+    .lp-why-img { display: flex; justify-content: center; }
+    .lp-why-img img {
+      width: 100%; max-width: 560px; height: auto; border-radius: 18px;
+      box-shadow: 0 18px 44px rgba(20,22,30,.12); border: 1px solid #efe9e3; background: #fff;
+    }
 
     /* Showcase */
     .lp-showcase { background: #fff; }
