@@ -6,20 +6,20 @@ import { AuthService } from '../../core/services/auth.service';
 
 const BLANK_FORM = () => ({
   name: '', code: '', email: '', phone: '', address: '',
-  gstin: '', website: '', serviceChargePercent: 0, taxPercent: 0,
+  gstin: '', website: '', googleReviewLink: '', serviceChargePercent: 0, taxPercent: 0,
   plan: 'BASIC', tableLimit: 10,
   ownerName: '', ownerEmail: '', ownerPassword: ''
 });
 
 const BLANK_EDIT = () => ({
   name: '', email: '', phone: '', address: '',
-  gstin: '', website: '', serviceChargePercent: 0, taxPercent: 0,
+  gstin: '', website: '', googleReviewLink: '', serviceChargePercent: 0, taxPercent: 0,
   plan: 'BASIC', tableLimit: 10, status: 'ACTIVE'
 });
 
 const BLANK_USER = () => ({ name: '', email: '', password: '', role: 'MANAGER' });
 
-const BLANK_OUTLET = () => ({ name: '', address: '', phone: '', email: '' });
+const BLANK_OUTLET = () => ({ name: '', address: '', phone: '', email: '', googleReviewLink: '' });
 
 @Component({
   standalone: true,
@@ -327,6 +327,10 @@ const BLANK_OUTLET = () => ({ name: '', address: '', phone: '', email: '' });
             <input class="sa-input" placeholder="https://example.com" [(ngModel)]="form.website">
           </div>
           <div class="sa-field">
+            <label class="sa-label">Google Review Link</label>
+            <input class="sa-input" placeholder="https://g.page/r/.../review" [(ngModel)]="form.googleReviewLink">
+          </div>
+          <div class="sa-field">
             <label class="sa-label">Tax % (GST)</label>
             <input class="sa-input" type="number" min="0" max="30" placeholder="5" [(ngModel)]="form.taxPercent">
           </div>
@@ -376,6 +380,75 @@ const BLANK_OUTLET = () => ({ name: '', address: '', phone: '', email: '' });
             @if (creating()) { Creating... } @else { Create Restaurant }
           </button>
         </div>
+      </div>
+
+      <!-- ── Demo Requests (leads from marketing landing page) ── -->
+      <div class="sa-section-hdr" id="demo-requests">
+        <div>
+          <h2 class="sa-section-title">Demo Requests</h2>
+          <p class="sa-section-sub">"Book a Demo" leads captured from the marketing website</p>
+        </div>
+        <div class="sa-lead-filters">
+          @for (st of leadStatuses; track st) {
+            <button class="sa-lead-filter" [class.active]="leadFilter() === st"
+              (click)="setLeadFilter(st)">
+              {{ st === '' ? 'All' : (st | titlecase) }}
+              @if (st !== '') { <span class="sa-lead-count">{{ leadCounts()[st] || 0 }}</span> }
+            </button>
+          }
+        </div>
+      </div>
+
+      <div class="sa-card sa-table-wrap">
+        <table class="sa-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Phone</th>
+              <th>Email</th>
+              <th>Address</th>
+              <th>Message</th>
+              <th>Received</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (l of leads(); track l._id) {
+              <tr>
+                <td class="sa-lead-name">{{ l.name }}</td>
+                <td><a [href]="'tel:' + l.phone" class="sa-lead-link">{{ l.phone }}</a></td>
+                <td>
+                  @if (l.email) {
+                    <a [href]="'mailto:' + l.email" class="sa-lead-link">{{ l.email }}</a>
+                  } @else { <span class="sa-muted">—</span> }
+                </td>
+                <td class="sa-lead-addr">{{ l.address }}</td>
+                <td class="sa-lead-msg">{{ l.message || '—' }}</td>
+                <td class="sa-muted">{{ l.createdAt | date: 'dd MMM, HH:mm' }}</td>
+                <td>
+                  <select class="sa-lead-status" [class]="'st-' + l.status"
+                    [value]="l.status" (change)="updateLeadStatus(l, $any($event.target).value)">
+                    <option value="NEW">New</option>
+                    <option value="CONTACTED">Contacted</option>
+                    <option value="CONVERTED">Converted</option>
+                    <option value="CLOSED">Closed</option>
+                  </select>
+                </td>
+                <td>
+                  <button class="sa-icon-btn sa-icon-btn-danger" title="Delete lead" (click)="deleteLead(l)">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                      <path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                    </svg>
+                  </button>
+                </td>
+              </tr>
+            } @empty {
+              <tr><td colspan="8" class="sa-empty-row">No demo requests yet.</td></tr>
+            }
+          </tbody>
+        </table>
       </div>
 
     </div><!-- /sa-body -->
@@ -447,6 +520,10 @@ const BLANK_OUTLET = () => ({ name: '', address: '', phone: '', email: '' });
             <div class="sa-field">
               <label class="sa-label">Website</label>
               <input class="sa-input" placeholder="https://" [(ngModel)]="editForm.website">
+            </div>
+            <div class="sa-field">
+              <label class="sa-label">Google Review Link</label>
+              <input class="sa-input" placeholder="https://g.page/r/.../review" [(ngModel)]="editForm.googleReviewLink">
             </div>
             <div class="sa-field">
               <label class="sa-label">Tax % (GST)</label>
@@ -588,6 +665,10 @@ const BLANK_OUTLET = () => ({ name: '', address: '', phone: '', email: '' });
             <div class="sa-field">
               <label class="sa-label">Email</label>
               <input class="sa-input" type="email" placeholder="outlet@restaurant.com" [(ngModel)]="outletForm.email">
+            </div>
+            <div class="sa-field sa-field-full">
+              <label class="sa-label">Google Review Link (optional)</label>
+              <input class="sa-input" placeholder="Leave blank to use restaurant's default review link" [(ngModel)]="outletForm.googleReviewLink">
             </div>
           </div>
           @if (outletsMsg()) {
@@ -870,6 +951,35 @@ const BLANK_OUTLET = () => ({ name: '', address: '', phone: '', email: '' });
     .sa-icon-btn-danger { color: #dc2626; }
     .sa-empty-row { text-align: center; padding: 2rem; color: var(--c-muted); }
 
+    /* ── Demo Requests (leads) ── */
+    .sa-lead-filters { display: flex; gap: .4rem; flex-wrap: wrap; }
+    .sa-lead-filter {
+      border: 1px solid var(--c-border); background: var(--c-bg); border-radius: 999px;
+      padding: .35rem .8rem; font-size: .78rem; font-weight: 600; color: var(--c-muted);
+      cursor: pointer; display: inline-flex; align-items: center; gap: .35rem; transition: all .15s;
+    }
+    .sa-lead-filter:hover { border-color: #c7c9cf; }
+    .sa-lead-filter.active { background: #16181d; color: #fff; border-color: #16181d; }
+    .sa-lead-count {
+      background: rgba(0,0,0,.12); border-radius: 999px; padding: 0 .4rem; font-size: .7rem; min-width: 1.1rem;
+      text-align: center;
+    }
+    .sa-lead-filter.active .sa-lead-count { background: rgba(255,255,255,.22); }
+    .sa-lead-name { font-weight: 600; }
+    .sa-lead-link { color: #2563eb; text-decoration: none; }
+    .sa-lead-link:hover { text-decoration: underline; }
+    .sa-lead-addr { max-width: 200px; }
+    .sa-lead-msg { max-width: 220px; color: var(--c-muted); font-size: .8rem; }
+    .sa-muted { color: var(--c-muted); }
+    .sa-lead-status {
+      border: 1px solid var(--c-border); border-radius: 6px; padding: .25rem .4rem; font-size: .76rem;
+      font-weight: 600; cursor: pointer; background: var(--c-bg);
+    }
+    .sa-lead-status.st-NEW { color: #1b4ea8; background: #e3edff; border-color: #c5d8fb; }
+    .sa-lead-status.st-CONTACTED { color: #9a4b00; background: #ffe9d6; border-color: #ffd2ad; }
+    .sa-lead-status.st-CONVERTED { color: #136a43; background: #d9f5e6; border-color: #b3e9cd; }
+    .sa-lead-status.st-CLOSED { color: #555; background: #ececec; border-color: #dcdcdc; }
+
     /* ── Form Card ── */
     .sa-form-card { padding: 1.5rem; }
     .sa-form-header { display: flex; align-items: flex-start; gap: 1rem; margin-bottom: 1.5rem; }
@@ -1074,11 +1184,40 @@ export class SuperadminComponent implements OnInit {
   logoUploadMsg   = signal('');
   logoUploadOk    = signal(false);
 
-  ngOnInit() { this.load(); }
+  // Demo requests (leads) from the marketing landing page
+  leads        = signal<any[]>([]);
+  leadCounts   = signal<Record<string, number>>({});
+  leadFilter   = signal<string>('');
+  leadStatuses = ['', 'NEW', 'CONTACTED', 'CONVERTED', 'CLOSED'];
+
+  ngOnInit() { this.load(); this.loadLeads(); }
 
   load() {
     this.api.get<any[]>('/admin/restaurants').subscribe(({ data }) => this.restaurants.set(data));
     this.api.get<any>('/admin/stats').subscribe(({ data }) => this.stats.set(data));
+  }
+
+  loadLeads() {
+    const status = this.leadFilter();
+    const path = status ? `/admin/leads?status=${status}` : '/admin/leads';
+    this.api.get<any>(path).subscribe(({ data }) => {
+      this.leads.set(data.leads || []);
+      this.leadCounts.set(data.counts || {});
+    });
+  }
+
+  setLeadFilter(status: string) {
+    this.leadFilter.set(status);
+    this.loadLeads();
+  }
+
+  updateLeadStatus(lead: any, status: string) {
+    this.api.patch(`/admin/leads/${lead._id}`, { status }).subscribe(() => this.loadLeads());
+  }
+
+  deleteLead(lead: any) {
+    if (!confirm(`Delete demo request from "${lead.name}"?`)) return;
+    this.api.delete(`/admin/leads/${lead._id}`).subscribe(() => this.loadLeads());
   }
 
   toggle(r: any) {
@@ -1153,7 +1292,7 @@ export class SuperadminComponent implements OnInit {
     this.editTarget.set(r);
     this.editForm = {
       name: r.name, email: r.email, phone: r.phone || '', address: r.address || '',
-      gstin: r.gstin || '', website: r.website || '',
+      gstin: r.gstin || '', website: r.website || '', googleReviewLink: r.googleReviewLink || '',
       serviceChargePercent: r.serviceChargePercent || 0,
       taxPercent: r.taxPercent ?? 0,
       plan: r.plan, tableLimit: r.tableLimit, status: r.status
@@ -1240,7 +1379,7 @@ export class SuperadminComponent implements OnInit {
 
   openEditOutlet(o: any) {
     this.editingOutlet.set(o);
-    this.outletForm = { name: o.name, address: o.address, phone: o.phone || '', email: o.email || '' };
+    this.outletForm = { name: o.name, address: o.address, phone: o.phone || '', email: o.email || '', googleReviewLink: o.googleReviewLink || '' };
     this.outletsMsg.set('');
   }
 

@@ -71,7 +71,7 @@ exports.list = async (req, res) => {
 };
 
 exports.create = async (req, res) => {
-  const { name, address, phone, email, tableLimit, staffAccounts } = req.body;
+  const { name, address, phone, email, tableLimit, staffAccounts, googleReviewLink } = req.body;
   if (!name || !address) throw ApiError.badRequest('Outlet name and address are required.');
 
   const limit = parseInt(tableLimit, 10) || 0;
@@ -88,7 +88,8 @@ exports.create = async (req, res) => {
 
   const outlet = await Outlet.create({
     restaurantId: req.user.restaurantId,
-    name, address, phone, email, tableLimit: limit
+    name, address, phone, email, tableLimit: limit,
+    googleReviewLink: googleReviewLink || undefined
   });
   audit({ req, restaurantId: req.user.restaurantId, action: 'OUTLET_CREATED', entity: 'Outlet', entityId: outlet._id });
 
@@ -115,7 +116,7 @@ exports.update = async (req, res) => {
   });
   if (!outlet) throw ApiError.notFound('Outlet not found. It may have been deleted.');
 
-  const { name, address, phone, email, tableLimit } = req.body;
+  const { name, address, phone, email, tableLimit, googleReviewLink } = req.body;
 
   if (tableLimit !== undefined) {
     const newLimit = parseInt(tableLimit, 10) || 0;
@@ -143,6 +144,7 @@ exports.update = async (req, res) => {
   if (address) outlet.address = address;
   if (phone !== undefined) outlet.phone = phone;
   if (email !== undefined) outlet.email = email;
+  if (googleReviewLink !== undefined) outlet.googleReviewLink = googleReviewLink;
   await outlet.save();
 
   const { staffAccounts } = req.body;

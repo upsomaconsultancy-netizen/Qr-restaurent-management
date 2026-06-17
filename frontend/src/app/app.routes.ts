@@ -2,6 +2,20 @@ import { Routes } from '@angular/router';
 import { authGuard, guestGuard, roleGuard } from './core/guards/auth.guard';
 
 export const routes: Routes = [
+  // Public SSR marketing landing page — what every visitor sees at the base URL
+  {
+    path: '',
+    pathMatch: 'full',
+    loadComponent: () => import('./features/marketing/landing.component').then(m => m.LandingComponent)
+  },
+  {
+    path: 'privacy-policy',
+    loadComponent: () => import('./features/marketing/privacy-policy.component').then(m => m.PrivacyPolicyComponent)
+  },
+  {
+    path: 'terms',
+    loadComponent: () => import('./features/marketing/terms.component').then(m => m.TermsComponent)
+  },
   // Customer QR entry point — what every printed QR code opens
   {
     path: 'm/:qrToken',
@@ -27,6 +41,6 @@ export const routes: Routes = [
     canActivate: [authGuard, roleGuard(['SUPER_ADMIN'])],
     loadComponent: () => import('./features/superadmin/superadmin.component').then(m => m.SuperadminComponent)
   },
-  { path: '', pathMatch: 'full', redirectTo: 'login' },
-  { path: '**', redirectTo: 'login' }
+  // Unknown routes fall back to the public landing page
+  { path: '**', redirectTo: '' }
 ];

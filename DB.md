@@ -218,3 +218,38 @@ compound
 | Outlet-scoped search | all collections with `outletId` | Add `filter: { outletId }` as second compound filter before text clauses |
 
 All features must keep `restaurantId` as the first `filter` entry regardless of which additional feature is in use.
+
+---
+
+## 6. `menu_search` — paste into Atlas "JSON Editor"
+
+This is the minimal version Atlas's UI expects (no `name`/`collectionName`/`database` keys — those are picked in the UI, not the JSON body). Use this for the `menuitems` collection, index name `menu_search`:
+
+```json
+{
+  "mappings": {
+    "dynamic": false,
+    "fields": {
+      "restaurantId": { "type": "objectId" },
+      "outletId": { "type": "objectId" },
+      "categoryId": { "type": "objectId" },
+      "isAvailable": { "type": "boolean" },
+      "isDeleted": { "type": "boolean" },
+      "foodType": { "type": "string" },
+      "name": [
+        { "type": "string" },
+        { "type": "autocomplete", "tokenization": "edgeGram", "minGrams": 2, "maxGrams": 15 }
+      ],
+      "description": { "type": "string" },
+      "variants": {
+        "type": "embeddedDocuments",
+        "fields": { "name": { "type": "string" } }
+      },
+      "addons": {
+        "type": "embeddedDocuments",
+        "fields": { "name": { "type": "string" } }
+      }
+    }
+  }
+}
+```

@@ -1,11 +1,36 @@
 const ApiError = require('../utils/ApiError');
 const Restaurant = require('../models/Restaurant');
 const Outlet = require('../models/Outlet');
+const redis = require('../config/redis');
 
 // OWNER's "home" outlet = first created outlet (Main Branch)
 async function ownerMainOutletId(restaurantId) {
   const o = await Outlet.findOne({ restaurantId, isDeleted: false }).sort({ createdAt: 1 }).lean();
   return o ? o._id : null;
+}
+
+// ── Tenant doc cache ────────────────────────────────────────────────────
+// tenantScope runs on every authenticated staff request, so re-reading the
+// restaurant document each time is pure overhead — it changes only on
+// suspend/activate/plan edits. Cache it in Valkey with a short TTL so a
+// suspension still takes effect within seconds even without invalidation.
+const TENANT_CACHE_TTL = 30; // seconds
+const tenantCacheKey = (restaurantId) => `tenant:restaurant:${restaurantId}`;
+
+async function getCachedRestaurant(restaurantId) {
+  const key = tenantCacheKey(restaurantId);
+  const cached = await redis.safeGet(key);
+  if (cached) {
+    try { return JSON.parse(cached); } catch { /* fall through to DB */ }
+  }
+  const restaurant = await Restaurant.findOne({ _id: restaurantId, isDeleted: false }).lean();
+  if (restaurant) redis.safeSetex(key, TENANT_CACHE_TTL, JSON.stringify(restaurant));
+  return restaurant;
+}
+
+/** Invalidate the cached restaurant doc immediately after a status/plan change. */
+async function invalidateTenantCache(restaurantId) {
+  await redis.safeDel(tenantCacheKey(restaurantId));
 }
 
 /**
@@ -19,10 +44,7 @@ async function tenantScope(req, _res, next) {
     if (req.user.role === 'SUPER_ADMIN') return next();
     if (!req.user.restaurantId) throw ApiError.forbidden('No tenant context');
 
-    const restaurant = await Restaurant.findOne({
-      _id: req.user.restaurantId,
-      isDeleted: false
-    }).lean();
+    const restaurant = await getCachedRestaurant(req.user.restaurantId);
     if (!restaurant) throw ApiError.forbidden('Restaurant not found', 'RESTAURANT_NOT_FOUND');
     if (restaurant.status !== 'ACTIVE') throw ApiError.forbidden('Restaurant is suspended. Please contact support.', 'RESTAURANT_SUSPENDED');
 
@@ -92,4 +114,4 @@ async function tenantMenuFilter(req, extra = {}) {
   return base;
 }
 
-module.exports = { tenantScope, tenantFilter, tenantMenuFilter };
+module.exports = { tenantScope, tenantFilter, tenantMenuFilter, invalidateTenantCache };

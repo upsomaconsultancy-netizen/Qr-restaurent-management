@@ -122,7 +122,7 @@ Chart.register(...registerables);
 
           <!-- Waiter notification bell -->
           <button *ngIf="auth.user()?.role === 'WAITER'" class="nav-tab notif-bell" (click)="showNotifications.set(!showNotifications())" style="position:relative;margin-left:auto;">
-            🔔
+            🔔Notification
             <span *ngIf="pendingServiceOrders().length > 0" class="nav-pill">{{ pendingServiceOrders().length }}</span>
           </button>
         </div>

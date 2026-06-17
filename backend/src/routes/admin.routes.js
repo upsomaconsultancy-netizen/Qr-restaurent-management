@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const asyncH = require('../utils/asyncHandler');
 const ctrl = require('../controllers/admin.controller');
+const leadCtrl = require('../controllers/lead.controller');
 const { requireAuth } = require('../middleware/auth');
 const { permit } = require('../middleware/rbac');
 const { upload } = require('../middleware/upload');
@@ -28,5 +29,10 @@ router.post('/restaurants/:id/outlets', asyncH(ctrl.createOutlet));
 router.patch('/restaurants/:id/outlets/:oid', asyncH(ctrl.updateOutlet));
 router.patch('/restaurants/:id/outlets/:oid/status', asyncH(ctrl.setOutletStatus));
 router.delete('/restaurants/:id/outlets/:oid', asyncH(ctrl.deleteOutlet));
+
+// Demo / sales leads from the marketing landing page
+router.get('/leads', asyncH(leadCtrl.list));
+router.patch('/leads/:id', asyncH(leadCtrl.update));
+router.delete('/leads/:id', asyncH(leadCtrl.remove));
 
 module.exports = router;

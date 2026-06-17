@@ -21,7 +21,7 @@ function menuCacheKey(outletId) {
 }
 
 async function invalidateMenuCache(outletId) {
-  await redis.del(menuCacheKey(outletId));
+  await redis.safeDel(menuCacheKey(outletId));
 }
 
 exports.invalidateMenuCache = invalidateMenuCache;
@@ -217,10 +217,12 @@ exports.resolveQr = async (req, res) => {
     });
   }
 
-  // Fetch strictly this outlet's items only — served from Redis cache (5 min TTL)
+  // Fetch strictly this outlet's items only — served from Redis cache (5 min TTL).
+  // safeGet returns null on any cache failure, so a Valkey outage degrades to a
+  // direct DB read instead of throwing on the busiest customer endpoint.
   let categories, items;
   const cacheKey = menuCacheKey(table.outletId);
-  const cached = await redis.get(cacheKey);
+  const cached = await redis.safeGet(cacheKey);
   if (cached) {
     ({ categories, items } = JSON.parse(cached));
   } else {
@@ -228,7 +230,7 @@ exports.resolveQr = async (req, res) => {
       Category.find({ restaurantId: restaurant._id, outletId: table.outletId, isDeleted: false, isActive: true }).sort('sortOrder').lean(),
       MenuItem.find({ restaurantId: restaurant._id, outletId: table.outletId, isDeleted: false, isAvailable: true }).lean()
     ]);
-    redis.setex(cacheKey, MENU_TTL, JSON.stringify({ categories, items })).catch(() => {});
+    redis.safeSetex(cacheKey, MENU_TTL, JSON.stringify({ categories, items }));
   }
 
   res.json({
@@ -240,7 +242,9 @@ exports.resolveQr = async (req, res) => {
         logoUrl: restaurant.logoUrl,
         currency: restaurant.currency,
         taxPercent: restaurant.taxPercent,
-        orderTypes: restaurant.settings.orderTypes
+        orderTypes: restaurant.settings.orderTypes,
+        website: restaurant.website || null,
+        googleReviewLink: outlet.googleReviewLink || restaurant.googleReviewLink || null
       },
       outlet: { id: outlet._id, name: outlet.name },
       table: { id: table._id, number: table.number, name: table.name, capacity: table.capacity, seatsOccupied: activeSeats },
@@ -332,15 +336,20 @@ exports.placeOrder = async (req, res) => {
   const restaurant = await Restaurant.findOne({ _id: tableSession.restaurantId, status: 'ACTIVE', isDeleted: false }).lean();
   if (!restaurant) throw ApiError.forbidden('This restaurant is currently unavailable. Please try again later.');
 
-  // Server-side pricing — never trust client prices; fetch from outlet-scoped menu
+  // Server-side pricing — never trust client prices; fetch from outlet-scoped menu.
+  // Batch every cart line into ONE query instead of N findOne round-trips.
+  const requestedIds = [...new Set(items.map((l) => l.menuItemId).filter(Boolean))];
+  const menuDocs = await MenuItem.find({
+    _id: { $in: requestedIds },
+    outletId: tableSession.outletId,
+    isDeleted: false,
+    isAvailable: true
+  }).lean();
+  const menuById = new Map(menuDocs.map((m) => [m._id.toString(), m]));
+
   const orderItems = [];
   for (const line of items) {
-    const mi = await MenuItem.findOne({
-      _id: line.menuItemId,
-      outletId: tableSession.outletId,
-      isDeleted: false,
-      isAvailable: true
-    }).lean();
+    const mi = menuById.get(String(line.menuItemId));
     if (!mi) throw ApiError.badRequest('One or more items in your cart are no longer available. Please refresh the menu and try again.');
 
     let unitPrice = mi.price;
@@ -436,6 +445,7 @@ exports.customerReceipt = async (req, res) => {
   const cs = await CustomerSession.findOne({ sessionToken: req.params.customerToken })
     .populate('tableId', 'number name')
     .populate('restaurantId')
+    .populate('outletId', 'googleReviewLink')
     .lean();
   if (!cs) throw ApiError.notFound('Session not found. Please rescan the QR code.');
 
@@ -463,7 +473,8 @@ exports.customerReceipt = async (req, res) => {
         gstin: restaurant.gstin || null,
         website: restaurant.website || null,
         email: restaurant.email || null,
-        logoUrl: restaurant.logoUrl || null
+        logoUrl: restaurant.logoUrl || null,
+        googleReviewLink: cs.outletId?.googleReviewLink || restaurant.googleReviewLink || null
       },
       order: {
         receiptNumber: `R-${orders[0].orderNumber}`,

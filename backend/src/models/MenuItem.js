@@ -47,4 +47,8 @@ const menuItemSchema = new mongoose.Schema(
 );
 
 menuItemSchema.index({ restaurantId: 1, isAvailable: 1, isDeleted: 1 });
+// Primary customer menu query filters on outletId too — without it the busiest
+// read (GET /public/qr) can't fully use an index. Covers the order-placement
+// pricing lookup ({_id, outletId, isDeleted, isAvailable}) as well.
+menuItemSchema.index({ restaurantId: 1, outletId: 1, isAvailable: 1, isDeleted: 1 });
 module.exports = mongoose.model('MenuItem', menuItemSchema);

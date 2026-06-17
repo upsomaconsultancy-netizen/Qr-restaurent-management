@@ -46,24 +46,7 @@ const CUSTOMER_TOKEN_PREFIX = "ros_cust_token_";
   standalone: true,
   imports: [CommonModule, DecimalPipe, FormsModule, ReactiveFormsModule],
   template: `
-    <!-- ── Loading ── -->
     @if (loading()) {
-      <div class="cm-page">
-        <div class="cm-header">
-          <div class="cm-header-inner"><div class="sk sk-title"></div></div>
-        </div>
-        <div class="cm-body">
-          @for (i of [1, 2, 3, 4, 5]; track i) {
-            <div class="sk-card">
-              <div class="sk sk-img"></div>
-              <div class="sk-lines">
-                <div class="sk sk-line-lg"></div>
-                <div class="sk sk-line-md"></div>
-              </div>
-            </div>
-          }
-        </div>
-      </div>
     } @else if (tableFull()) {
       <div class="cm-page cm-error-page">
         <div class="cm-error-box cm-table-full-box">
@@ -213,8 +196,20 @@ const CUSTOMER_TOKEN_PREFIX = "ros_cust_token_";
                 </div>
               </div>
             </div>
-            <div class="cm-order-type-chip">
-              {{ orderType() === "DINING" ? "🍽️ Dine In" : "📦 Takeaway" }}
+            <div class="cm-header-actions">
+              @if (data()!.restaurant.website) {
+                <a
+                  class="cm-website-link"
+                  [href]="data()!.restaurant.website"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  🌐 Visit Website
+                </a>
+              }
+              <div class="cm-order-type-chip">
+                {{ orderType() === "DINING" ? "🍽️ Dine In" : "📦 Takeaway" }}
+              </div>
             </div>
           </div>
         </header>
@@ -262,7 +257,7 @@ const CUSTOMER_TOKEN_PREFIX = "ros_cust_token_";
               <button
                 class="cm-cat-pill"
                 [class.active]="activeCat() === ''"
-                (click)="activeCat.set('')"
+                (click)="selectCat('')"
               >
                 All
               </button>
@@ -270,7 +265,7 @@ const CUSTOMER_TOKEN_PREFIX = "ros_cust_token_";
                 <button
                   class="cm-cat-pill"
                   [class.active]="activeCat() === c._id"
-                  (click)="activeCat.set(c._id)"
+                  (click)="selectCat(c._id)"
                 >
                   {{ c.name }}
                 </button>
@@ -295,7 +290,7 @@ const CUSTOMER_TOKEN_PREFIX = "ros_cust_token_";
             </div>
           }
 
-          @for (item of activeItems(); track item._id) {
+          @for (item of pagedItems(); track item._id) {
             <div class="cm-item-card">
               <div class="cm-item-body">
                 <div class="cm-item-veg-dot">
@@ -362,6 +357,34 @@ const CUSTOMER_TOKEN_PREFIX = "ros_cust_token_";
               } @else {
                 <p>No items in this category</p>
               }
+            </div>
+          }
+
+          @if (totalPages() > 1) {
+            <div class="cm-pagination">
+              <button
+                class="cm-page-nav"
+                [disabled]="currentPage() === 1"
+                (click)="goToPage(currentPage() - 1)"
+              >
+                ‹ Prev
+              </button>
+              @for (p of pageNumbers(); track p) {
+                <button
+                  class="cm-page-num"
+                  [class.active]="currentPage() === p"
+                  (click)="goToPage(p)"
+                >
+                  {{ p }}
+                </button>
+              }
+              <button
+                class="cm-page-nav"
+                [disabled]="currentPage() === totalPages()"
+                (click)="goToPage(currentPage() + 1)"
+              >
+                Next ›
+              </button>
             </div>
           }
 
@@ -778,11 +801,25 @@ const CUSTOMER_TOKEN_PREFIX = "ros_cust_token_";
               }
             </div>
           </div>
-          <div class="cm-receipt-actions">
-            <button class="cm-print-btn-modal" (click)="printReceipt()">
-              🖨️ Print
-            </button>
-            <button class="cm-close-btn" (click)="closeReceipt()">Close</button>
+          <div class="cm-receipt-actions-wrap">
+            @if (receipt()!.restaurant.googleReviewLink) {
+              <a
+                class="cm-rate-btn"
+                [href]="receipt()!.restaurant.googleReviewLink"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                ⭐ Rate Our Restaurant
+              </a>
+            }
+            <div class="cm-receipt-actions">
+              <button class="cm-print-btn-modal" (click)="printReceipt()">
+                🖨️ Print
+              </button>
+              <button class="cm-close-btn" (click)="closeReceipt()">
+                Close
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -870,6 +907,25 @@ const CUSTOMER_TOKEN_PREFIX = "ros_cust_token_";
         color: var(--primary);
         padding: 0.3rem 0.75rem;
         border-radius: 2rem;
+      }
+      .cm-header-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+      .cm-website-link {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--text-muted);
+        text-decoration: none;
+        padding: 0.3rem 0.6rem;
+        border: 1px solid var(--border);
+        border-radius: 2rem;
+        white-space: nowrap;
+      }
+      .cm-website-link:hover {
+        color: var(--primary);
+        border-color: var(--primary);
       }
 
       .cm-body {
@@ -1257,6 +1313,37 @@ const CUSTOMER_TOKEN_PREFIX = "ros_cust_token_";
         text-align: center;
         padding: 3rem 1rem;
         color: var(--text-muted);
+      }
+
+      .cm-pagination {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.4rem;
+        flex-wrap: wrap;
+        padding: 1rem;
+      }
+      .cm-page-nav,
+      .cm-page-num {
+        min-width: 2.2rem;
+        height: 2.2rem;
+        padding: 0 0.5rem;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        background: var(--surface);
+        color: var(--text);
+        font-size: 0.85rem;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .cm-page-num.active {
+        background: var(--primary);
+        color: white;
+        border-color: var(--primary);
+      }
+      .cm-page-nav:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
       }
 
       /* Bill Card */
@@ -1743,11 +1830,29 @@ const CUSTOMER_TOKEN_PREFIX = "ros_cust_token_";
         overflow-y: auto;
         padding: 1rem;
       }
+      .cm-receipt-actions-wrap {
+        display: flex;
+        flex-direction: column;
+        gap: 0.6rem;
+        padding: 1rem;
+        border-top: 1px solid var(--border);
+      }
       .cm-receipt-actions {
         display: flex;
         gap: 0.75rem;
-        padding: 1rem;
-        border-top: 1px solid var(--border);
+      }
+      .cm-rate-btn {
+        display: block;
+        text-align: center;
+        padding: 0.75rem;
+        background: #fff7ed;
+        color: #b45309;
+        border: 1px solid #fcd34d;
+        border-radius: var(--radius-sm);
+        font-size: 0.9rem;
+        font-weight: 700;
+        text-decoration: none;
+        cursor: pointer;
       }
       .cm-print-btn-modal {
         flex: 1;
@@ -1971,6 +2076,34 @@ export class CustomerMenuComponent implements OnInit, OnChanges, OnDestroy {
   activeItems = computed(() =>
     this.searchQuery() ? this.searchResults() : this.visibleItems(),
   );
+
+  static readonly PAGE_SIZE = 30;
+  currentPage = signal(1);
+
+  totalPages = computed(() =>
+    Math.max(1, Math.ceil(this.activeItems().length / CustomerMenuComponent.PAGE_SIZE)),
+  );
+
+  /** Current page slice of activeItems() — keeps the list capped at PAGE_SIZE rows. */
+  pagedItems = computed(() => {
+    const page = this.currentPage();
+    const start = (page - 1) * CustomerMenuComponent.PAGE_SIZE;
+    return this.activeItems().slice(start, start + CustomerMenuComponent.PAGE_SIZE);
+  });
+
+  pageNumbers = computed(() =>
+    Array.from({ length: this.totalPages() }, (_, i) => i + 1),
+  );
+
+  goToPage(p: number) {
+    if (p < 1 || p > this.totalPages()) return;
+    this.currentPage.set(p);
+  }
+
+  selectCat(id: string) {
+    this.activeCat.set(id);
+    this.currentPage.set(1);
+  }
   cartCount = computed(() => this.cart().reduce((s, l) => s + l.qty, 0));
   cartTotal = computed(() =>
     this.cart().reduce((s, l) => {
@@ -2000,18 +2133,43 @@ export class CustomerMenuComponent implements OnInit, OnChanges, OnDestroy {
     this.destroy.complete();
   }
 
+  private localSearch(q: string): MenuItem[] {
+    const items = (this.data()?.items ?? []) as MenuItem[];
+    const needle = q.toLowerCase();
+    return items.filter(
+      (i) =>
+        i.name?.toLowerCase().includes(needle) ||
+        i.description?.toLowerCase().includes(needle),
+    );
+  }
+
   private initSearch() {
-    this.searchControl.valueChanges
+    const terms$ = this.searchControl.valueChanges.pipe(
+      takeUntil(this.destroy),
+    );
+
+    // Instant local filter on every keystroke — no debounce, no DB hit.
+    terms$.subscribe((term) => {
+      const q = term?.trim() ?? "";
+      this.searchQuery.set(q);
+      this.currentPage.set(1);
+      if (!q) {
+        this.searchResults.set([]);
+        return;
+      }
+      this.searchResults.set(this.localSearch(q));
+    });
+
+    // Only hit the API if the local menu had no match for this term,
+    // and only after the user pauses typing.
+    terms$
       .pipe(
         debounceTime(300),
         distinctUntilChanged(),
         switchMap((term) => {
           const q = term?.trim() ?? "";
-          this.searchQuery.set(q);
-          if (!q) {
-            this.searchResults.set([]);
-            return of(null);
-          }
+          if (!q || this.localSearch(q).length > 0) return of(null);
+
           const sessionToken = this.data()?.sessionToken;
           if (!sessionToken) return of(null);
           return this.api.get<MenuItem[]>("/public/search", {
@@ -2023,7 +2181,8 @@ export class CustomerMenuComponent implements OnInit, OnChanges, OnDestroy {
       )
       .subscribe({
         next: (res) => {
-          if (res) this.searchResults.set(res.data);
+          if (res && this.searchControl.value?.trim() === this.searchQuery())
+            this.searchResults.set(res.data);
         },
         error: () => {
           this.searchResults.set([]);

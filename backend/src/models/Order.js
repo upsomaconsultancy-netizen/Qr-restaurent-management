@@ -93,6 +93,14 @@ orderSchema.index({ outletId: 1, orderNumber: 1 }, { unique: true });
 orderSchema.index({ restaurantId: 1, customerSessionId: 1, createdAt: -1 });
 orderSchema.index({ restaurantId: 1, paymentStatus: 1 });
 orderSchema.index({ outletId: 1, status: 1, createdAt: -1 });
+// Sales analytics: $match on { restaurantId, paymentStatus:'PAID', createdAt range }.
+orderSchema.index({ restaurantId: 1, paymentStatus: 1, createdAt: -1 });
+// Time/item/consolidated analytics: $match on { restaurantId, createdAt range }.
+orderSchema.index({ restaurantId: 1, createdAt: -1 });
+// Live bill aggregation in billing.service: find by sessionId / customerSessionId
+// scoped to active, non-cancelled orders.
+orderSchema.index({ sessionId: 1, isDeleted: 1, status: 1 });
+orderSchema.index({ customerSessionId: 1, isDeleted: 1, status: 1 });
 
 module.exports = mongoose.model('Order', orderSchema);
 module.exports.ITEM_STATUSES = ITEM_STATUSES;

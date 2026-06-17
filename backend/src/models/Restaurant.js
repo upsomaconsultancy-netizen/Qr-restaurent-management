@@ -15,6 +15,7 @@ const restaurantSchema = new mongoose.Schema(
     // Receipt / billing fields
     gstin:      String,
     website:    String,
+    googleReviewLink: String,
     serviceChargePercent: { type: Number, default: 0 },
 
     // Bill-level taxes applied once on the full subtotal (not per item)

@@ -9,6 +9,7 @@ const outletSchema = new mongoose.Schema(
     email:   String,
     status:  { type: String, enum: ['ACTIVE', 'INACTIVE'], default: 'ACTIVE' },
     tableLimit: { type: Number, default: 0 }, // max tables this outlet can create (0 = not set / use restaurant limit)
+    googleReviewLink: String, // optional override; falls back to restaurant.googleReviewLink if empty
     isDeleted: { type: Boolean, default: false }
   },
   { timestamps: true }

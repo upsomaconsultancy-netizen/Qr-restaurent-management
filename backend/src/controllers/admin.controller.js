@@ -7,6 +7,7 @@ const Table = require('../models/Table');
 const ApiError = require('../utils/ApiError');
 const { audit } = require('../utils/audit');
 const { uploadImage, deleteImage } = require('../config/cloudinary');
+const { invalidateTenantCache } = require('../middleware/tenant');
 
 const createSchema = Joi.object({
   name: Joi.string().min(2).required(),
@@ -16,6 +17,7 @@ const createSchema = Joi.object({
   address: Joi.string().min(5).required(),
   gstin: Joi.string().allow('', null),
   website: Joi.string().uri().allow('', null),
+  googleReviewLink: Joi.string().uri().allow('', null),
   serviceChargePercent: Joi.number().min(0).max(30).default(0),
   taxPercent: Joi.number().min(0).max(30).default(0),
   plan: Joi.string().valid('BASIC', 'STANDARD', 'PREMIUM').default('BASIC'),
@@ -32,6 +34,7 @@ const updateSchema = Joi.object({
   address: Joi.string().min(5),
   gstin: Joi.string().allow('', null),
   website: Joi.string().uri().allow('', null),
+  googleReviewLink: Joi.string().uri().allow('', null),
   serviceChargePercent: Joi.number().min(0).max(30),
   taxPercent: Joi.number().min(0).max(30),
   plan: Joi.string().valid('BASIC', 'STANDARD', 'PREMIUM'),
@@ -52,6 +55,7 @@ exports.createRestaurant = async (req, res) => {
     name: value.name, code: value.code, email: value.email,
     phone: value.phone, address: value.address,
     gstin: value.gstin || undefined, website: value.website || undefined,
+    googleReviewLink: value.googleReviewLink || undefined,
     serviceChargePercent: value.serviceChargePercent || 0,
     taxPercent: value.taxPercent ?? 0,
     plan: value.plan, tableLimit: value.tableLimit
@@ -113,6 +117,7 @@ exports.updateRestaurant = async (req, res) => {
     { new: true }
   );
   if (!r) throw ApiError.notFound('Restaurant not found. It may have been deleted.');
+  await invalidateTenantCache(r._id);
   audit({ req, action: 'RESTAURANT_UPDATED', entity: 'Restaurant', entityId: r._id });
   res.json({ success: true, data: r });
 };
@@ -172,6 +177,7 @@ exports.setStatus = async (req, res) => {
   if (!['ACTIVE', 'SUSPENDED'].includes(status)) throw ApiError.badRequest(`Invalid status "${status}". Use ACTIVE or SUSPENDED.`);
   const r = await Restaurant.findByIdAndUpdate(req.params.id, { status }, { new: true });
   if (!r) throw ApiError.notFound('Restaurant not found.');
+  await invalidateTenantCache(r._id);
   audit({ req, action: `RESTAURANT_${status}`, entity: 'Restaurant', entityId: r._id });
   res.json({ success: true, data: r });
 };
@@ -183,6 +189,7 @@ exports.setTableLimit = async (req, res) => {
   if (limit < activeTables) throw ApiError.conflict(`Cannot set limit to ${limit}. This restaurant already has ${activeTables} active tables. Delete some tables first.`);
   const r = await Restaurant.findByIdAndUpdate(req.params.id, { tableLimit: limit }, { new: true });
   if (!r) throw ApiError.notFound('Restaurant not found.');
+  await invalidateTenantCache(r._id);
   audit({ req, action: 'TABLE_LIMIT_CHANGED', entity: 'Restaurant', entityId: r._id, meta: { limit } });
   res.json({ success: true, data: r });
 };
@@ -192,6 +199,7 @@ exports.setPlan = async (req, res) => {
   if (!['BASIC', 'STANDARD', 'PREMIUM'].includes(plan)) throw ApiError.badRequest(`Invalid plan "${plan}". Choose from: BASIC, STANDARD, PREMIUM.`);
   const r = await Restaurant.findByIdAndUpdate(req.params.id, { plan }, { new: true });
   if (!r) throw ApiError.notFound('Restaurant not found.');
+  await invalidateTenantCache(r._id);
   audit({ req, action: 'PLAN_CHANGED', entity: 'Restaurant', entityId: r._id, meta: { plan } });
   res.json({ success: true, data: r });
 };
@@ -218,6 +226,7 @@ exports.uploadLogo = async (req, res) => {
   restaurant.logoPublicId = result.public_id;
   await restaurant.save();
 
+  await invalidateTenantCache(restaurant._id);
   audit({ req, action: 'RESTAURANT_LOGO_UPDATED', entity: 'Restaurant', entityId: restaurant._id });
   res.json({ success: true, data: { logoUrl: restaurant.logoUrl } });
 };
@@ -226,6 +235,7 @@ exports.softDelete = async (req, res) => {
   const r = await Restaurant.findByIdAndUpdate(req.params.id, { isDeleted: true, status: 'SUSPENDED' }, { new: true });
   if (!r) throw ApiError.notFound('Restaurant not found.');
   await Outlet.updateMany({ restaurantId: req.params.id }, { isDeleted: true, status: 'INACTIVE' });
+  await invalidateTenantCache(r._id);
   audit({ req, action: 'RESTAURANT_DELETED', entity: 'Restaurant', entityId: r._id });
   res.json({ success: true });
 };
@@ -270,10 +280,10 @@ exports.createOutlet = async (req, res) => {
   const restaurant = await Restaurant.findOne({ _id: req.params.id, isDeleted: false });
   if (!restaurant) throw ApiError.notFound('Restaurant not found. It may have been deleted.');
 
-  const { name, address, phone, email } = req.body;
+  const { name, address, phone, email, googleReviewLink } = req.body;
   if (!name || !address) throw ApiError.badRequest('Outlet name and address are required.');
 
-  const outlet = await Outlet.create({ restaurantId: req.params.id, name, address, phone, email });
+  const outlet = await Outlet.create({ restaurantId: req.params.id, name, address, phone, email, googleReviewLink: googleReviewLink || undefined });
   audit({ req, action: 'OUTLET_CREATED', entity: 'Outlet', entityId: outlet._id });
   res.status(201).json({ success: true, data: outlet });
 };
@@ -282,11 +292,12 @@ exports.updateOutlet = async (req, res) => {
   const outlet = await Outlet.findOne({ _id: req.params.oid, restaurantId: req.params.id, isDeleted: false });
   if (!outlet) throw ApiError.notFound('Outlet not found. It may have been deleted.');
 
-  const { name, address, phone, email } = req.body;
+  const { name, address, phone, email, googleReviewLink } = req.body;
   if (name) outlet.name = name;
   if (address) outlet.address = address;
   if (phone !== undefined) outlet.phone = phone;
   if (email !== undefined) outlet.email = email;
+  if (googleReviewLink !== undefined) outlet.googleReviewLink = googleReviewLink;
   await outlet.save();
 
   audit({ req, action: 'OUTLET_UPDATED', entity: 'Outlet', entityId: outlet._id });

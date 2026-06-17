@@ -9,6 +9,10 @@
   --ros-shadow: 0 6px 24px rgba(20, 22, 30, .08);
 }
 
+html { scroll-behavior: smooth; }
+/* Offset in-page anchor targets so the sticky marketing nav doesn't cover headings */
+section[id] { scroll-margin-top: 72px; }
+
 body {
   font-family: 'Inter', system-ui, sans-serif;
   color: var(--ros-ink);
