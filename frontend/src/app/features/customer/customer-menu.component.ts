@@ -1944,7 +1944,6 @@ export class CustomerMenuComponent implements OnInit, OnChanges, OnDestroy {
   searchControl = new FormControl("");
   searchQuery = signal<string>("");
   searchResults = signal<MenuItem[]>([]);
-  searchLoading = signal(false);
 
   custName = "";
   custMobile = "";
@@ -1984,7 +1983,7 @@ export class CustomerMenuComponent implements OnInit, OnChanges, OnDestroy {
   );
 
   private tokenKey(): string {
-    return CUSTOMER_TOKEN_PREFIX + (this.data()?.sessionToken ?? "default");
+    return CUSTOMER_TOKEN_PREFIX + this.qrToken;
   }
 
   ngOnChanges(c: SimpleChanges) {
@@ -2010,16 +2009,11 @@ export class CustomerMenuComponent implements OnInit, OnChanges, OnDestroy {
           const q = term?.trim() ?? "";
           this.searchQuery.set(q);
           if (!q) {
-            this.searchLoading.set(false);
             this.searchResults.set([]);
             return of(null);
           }
-          // this.searchLoading.set(true);
           const sessionToken = this.data()?.sessionToken;
-          if (!sessionToken) {
-            this.searchLoading.set(false);
-            return of(null);
-          }
+          if (!sessionToken) return of(null);
           return this.api.get<MenuItem[]>("/public/search", {
             sessionToken,
             q,
@@ -2029,11 +2023,9 @@ export class CustomerMenuComponent implements OnInit, OnChanges, OnDestroy {
       )
       .subscribe({
         next: (res) => {
-          // this.searchLoading.set(false);
           if (res) this.searchResults.set(res.data);
         },
         error: () => {
-          // this.searchLoading.set(false);
           this.searchResults.set([]);
         },
       });
@@ -2048,7 +2040,11 @@ export class CustomerMenuComponent implements OnInit, OnChanges, OnDestroy {
   private fetchMenu() {
     this.loading.set(true);
     this.fetchError.set(null);
-    this.api.get<any>(`/public/qr/${this.qrToken}`).subscribe({
+    const storedToken = this.isBrowser
+      ? localStorage.getItem(this.tokenKey())
+      : null;
+    const params = storedToken ? { customerToken: storedToken } : undefined;
+    this.api.get<any>(`/public/qr/${this.qrToken}`, params).subscribe({
       next: ({ data }) => {
         if (data.tableFull) {
           this.tableFull.set({
@@ -2060,7 +2056,7 @@ export class CustomerMenuComponent implements OnInit, OnChanges, OnDestroy {
         }
         this.data.set(data);
         this.loading.set(false);
-        this.restoreCustomerSession(data.sessionToken);
+        this.restoreCustomerSession();
       },
       error: (err: any) => {
         const msg =
@@ -2080,7 +2076,7 @@ export class CustomerMenuComponent implements OnInit, OnChanges, OnDestroy {
     this.sock.on<any>("order:updated").subscribe(() => this.refreshBill());
   }
 
-  private restoreCustomerSession(_sessionToken: string) {
+  private restoreCustomerSession() {
     if (!this.isBrowser) return;
     const stored = localStorage.getItem(this.tokenKey());
     if (!stored) return;

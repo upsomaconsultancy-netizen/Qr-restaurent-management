@@ -185,6 +185,19 @@ exports.resolveQr = async (req, res) => {
     });
   }
 
+  // If the requesting browser already holds a valid customer token for this table
+  // session, they're a returning customer reconnecting (e.g. after a refresh) —
+  // they already occupy a seat, so the capacity gate must not apply to them.
+  const { customerToken } = req.query;
+  let returningCustomer = null;
+  if (customerToken) {
+    returningCustomer = await CustomerSession.findOne({
+      sessionToken: customerToken,
+      sessionId: session._id,
+      isActive: true
+    }).lean();
+  }
+
   // Check table capacity — count active customer sessions for this table session
   const activeSeats = await CustomerSession.countDocuments({
     tableId: table._id,
@@ -192,7 +205,7 @@ exports.resolveQr = async (req, res) => {
     isActive: true
   });
 
-  if (activeSeats >= table.capacity) {
+  if (!returningCustomer && activeSeats >= table.capacity) {
     return res.json({
       success: true,
       data: {
