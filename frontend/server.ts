@@ -46,4 +46,7 @@ function run(): void {
   });
 }
 
-run();
+const isMainModule = resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url);
+if (isMainModule) {
+  run();
+}
