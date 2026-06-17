@@ -837,7 +837,7 @@ Chart.register(...registerables);
                       style="flex:1;min-width:0;padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;box-sizing:border-box;">
                     <button (click)="removeBillTax($index)" [disabled]="deletingTaxId() === tax._id" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:18px;padding:0 4px;line-height:1;flex-shrink:0;">
                       {{ deletingTaxId() === tax._id ? '...' : '✕' }}
-                    </button>
+                    </button>x  
                   </div>
                   <!-- Row 2: Type + Rate + Active -->
                   <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;">

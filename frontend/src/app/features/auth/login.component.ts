@@ -1,11 +1,12 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { AuthService } from '../../core/services/auth.service';
 
 @Component({
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule,CommonModule],
   styles: [`
     .login-bg {
       min-height: 100vh;
@@ -213,53 +214,71 @@ import { AuthService } from '../../core/services/auth.service';
       }
 
       <!-- Form -->
-      <form (ngSubmit)="submit()">
-        <div style="margin-bottom: 1rem;">
-          <label class="field-label" for="email">Email address</label>
-          <input
-            id="email"
-            class="field-input"
-            type="email"
-            [(ngModel)]="email"
-            name="email"
-            placeholder="you@upsoma.com"
-            required
-            autocomplete="username"
-          />
-        </div>
+     <form #loginForm="ngForm" (ngSubmit)="submit()">
 
-        <div style="margin-bottom: 0.25rem;">
-          <label class="field-label" for="password">Password</label>
-          <div class="pw-wrap">
-            <input
-              id="password"
-              class="field-input"
-              [type]="showPassword ? 'text' : 'password'"
-              [(ngModel)]="password"
-              name="password"
-              placeholder="Enter your password"
-              required
-              autocomplete="current-password"
-            />
-            <button
-              type="button"
-              class="eye-btn"
-              (click)="showPassword = !showPassword"
-              [attr.aria-label]="showPassword ? 'Hide password' : 'Show password'"
-            >
-              {{ showPassword ? '🙈' : '👁' }}
-            </button>
-          </div>
-        </div>
+  <div style="margin-bottom: 1rem;">
+    <label class="field-label" for="email">
+      <i class="fa-solid fa-user field-icon"></i>
+      Email address
+    </label>
 
-        <button
-          type="submit"
-          class="submit-btn"
-          [disabled]="loading()"
-        >
-          {{ loading() ? 'Signing in…' : 'Sign in' }}
-        </button>
-      </form>
+    <input
+      id="email"
+      class="field-input"
+      type="email"
+      [(ngModel)]="email"
+      name="email"
+      placeholder="you@upsoma.com"
+      required
+      email
+      autocomplete="username"
+      #emailRef="ngModel"
+    />
+  </div>
+
+  <div style="margin-bottom: 0.25rem;">
+    <label class="field-label" for="password">
+      <i class="fa-solid fa-key field-icon"></i>
+      Password
+    </label>
+
+    <div class="pw-wrap">
+      <input
+        id="password"
+        class="field-input"
+        [type]="showPassword ? 'text' : 'password'"
+        [(ngModel)]="password"
+        name="password"
+        placeholder="Enter your password"
+        required
+        minlength="6"
+        autocomplete="current-password"
+        #passwordRef="ngModel"
+      />
+
+      <button
+        type="button"
+        class="eye-btn"
+        (click)="showPassword = !showPassword"
+        [attr.aria-label]="showPassword ? 'Hide password' : 'Show password'"
+      >
+        <i
+          class="fa-solid"
+          [ngClass]="showPassword ? 'fa-eye-slash' : 'fa-eye'"
+        ></i>
+      </button>
+    </div>
+  </div>
+
+  <button
+    type="submit"
+    class="submit-btn"
+    [disabled]="loading() || loginForm.invalid"
+  >
+    {{ loading() ? 'Signing in...' : 'Sign in' }}
+  </button>
+
+</form>
 
       <!-- Footer -->
       <div class="card-footer">
