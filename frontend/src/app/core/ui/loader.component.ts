@@ -11,7 +11,7 @@ import { LoaderService } from '../services/loader.service';
       <div class="loader-overlay">
         <div class="loader-box">
           <video autoplay loop muted playsinline class="loader-video">
-            <source src="loader1.mp4" type="video/mp4" />
+            <source src="/loader1.mp4" type="video/mp4" />
           </video>
         </div>
       </div>
