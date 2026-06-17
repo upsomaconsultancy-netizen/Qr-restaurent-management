@@ -3,11 +3,12 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MenuService, Category } from '../../core/services/menu.service';
 import { AuthService } from '../../core/services/auth.service';
+import { ImageUploadComponent } from '../../shared/components/image-upload.component';
 
 @Component({
   selector: 'app-category-manager',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, ImageUploadComponent],
   styles: [
     `
       .category-manager-card {
@@ -112,7 +113,10 @@ import { AuthService } from '../../core/services/auth.service';
         <div class="category-form ros-card p-3 mb-3">
           <div class="mb-2">
             <input type="text" class="form-control form-control-sm mb-2" [(ngModel)]="newCategory.name" placeholder="Category name" />
-            <div class="d-flex gap-2 flex-wrap">
+            <app-image-upload folder="category" [imageUrl]="imageUrl()" [imagePublicId]="imagePublicId()"
+              (imageUrlChange)="imageUrl.set($event)" (imagePublicIdChange)="imagePublicId.set($event)">
+            </app-image-upload>
+            <div class="d-flex gap-2 flex-wrap mt-2">
               <button class="btn btn-sm btn-success" (click)="addCategory()" [disabled]="menu.loading()">Add</button>
               <button class="btn btn-sm btn-secondary" (click)="toggleForm()">Cancel</button>
             </div>
@@ -131,9 +135,14 @@ import { AuthService } from '../../core/services/auth.service';
           <div class="list-group list-group-flush">
             @for (cat of menu.categories(); track cat._id) {
               <div class="list-group-item category-item">
-                <div class="category-info">
-                  <span class="category-name">{{ cat.name }}</span>
-                  <small class="category-count">{{ getItemCount(cat._id!) }} items</small>
+                <div class="category-info d-flex align-items-center gap-2">
+                  @if (cat.imageUrl) {
+                    <img [src]="cat.imageUrl" alt="" width="32" height="32" class="rounded object-fit-cover">
+                  }
+                  <div>
+                    <span class="category-name">{{ cat.name }}</span>
+                    <small class="category-count">{{ getItemCount(cat._id!) }} items</small>
+                  </div>
                 </div>
                 <div class="category-actions">
                   @if (auth.user()?.role === 'OWNER') {
@@ -154,6 +163,8 @@ export class CategoryManagerComponent implements OnInit {
 
   showAddForm = signal(false);
   newCategory: Partial<Category> = { name: '', sortOrder: 0 };
+  imageUrl = signal<string | null>(null);
+  imagePublicId = signal<string | null>(null);
 
   ngOnInit() {
     this.menu.getCategories();
@@ -163,6 +174,8 @@ export class CategoryManagerComponent implements OnInit {
     this.showAddForm.set(!this.showAddForm());
     if (!this.showAddForm()) {
       this.newCategory = { name: '', sortOrder: 0 };
+      this.imageUrl.set(null);
+      this.imagePublicId.set(null);
     }
   }
 
@@ -170,9 +183,13 @@ export class CategoryManagerComponent implements OnInit {
     if (!this.newCategory.name) return;
     this.menu.createCategory({
       name: this.newCategory.name,
-      sortOrder: this.newCategory.sortOrder || 0
+      sortOrder: this.newCategory.sortOrder || 0,
+      imageUrl: this.imageUrl() || undefined,
+      imagePublicId: this.imagePublicId() || undefined
     });
     this.newCategory = { name: '', sortOrder: 0 };
+    this.imageUrl.set(null);
+    this.imagePublicId.set(null);
     this.showAddForm.set(false);
   }
 

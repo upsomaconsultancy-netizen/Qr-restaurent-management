@@ -1,7 +1,7 @@
 const Restaurant = require('../models/Restaurant');
 const ApiError = require('../utils/ApiError');
 const { audit } = require('../utils/audit');
-const { uploadImage, deleteImage } = require('../config/cloudinary');
+const { deleteImage } = require('../config/cloudinary');
 
 exports.getProfile = async (req, res) => {
   const r = await Restaurant.findById(req.user.restaurantId).lean();
@@ -53,28 +53,34 @@ exports.updateBillTaxes = async (req, res) => {
   res.json({ success: true, data: r.billTaxes });
 };
 
-exports.uploadLogo = async (req, res) => {
-  if (!req.file) throw ApiError.badRequest('No image file was uploaded. Please select an image and try again.');
+exports.updateLogoUrl = async (req, res) => {
+  const { logoUrl, logoPublicId } = req.body;
+  if (!logoUrl || !logoPublicId) throw ApiError.badRequest('logoUrl and logoPublicId are required.');
 
   const restaurant = await Restaurant.findById(req.user.restaurantId);
   if (!restaurant) throw ApiError.notFound('Restaurant not found. Please contact your administrator.');
 
-  if (restaurant.logoPublicId) {
+  if (restaurant.logoPublicId && restaurant.logoPublicId !== logoPublicId) {
     await deleteImage(restaurant.logoPublicId).catch(() => {});
   }
 
-  let result;
-  try {
-    result = await uploadImage(req.file.buffer, `ros/${restaurant._id}/logo`);
-  } catch (err) {
-    console.error('[uploadLogo] Cloudinary error:', err?.message || err);
-    throw new ApiError(500, 'Image upload failed. Please check your internet connection and try again.');
-  }
-
-  restaurant.logoUrl = result.secure_url;
-  restaurant.logoPublicId = result.public_id;
+  restaurant.logoUrl = logoUrl;
+  restaurant.logoPublicId = logoPublicId;
   await restaurant.save();
 
   audit({ req, action: 'RESTAURANT_LOGO_UPDATED', entity: 'Restaurant', entityId: restaurant._id });
   res.json({ success: true, data: { logoUrl: restaurant.logoUrl } });
+};
+
+exports.deleteBillTax = async (req, res) => {
+  const r = await Restaurant.findById(req.user.restaurantId);
+  if (!r) throw ApiError.notFound('Restaurant not found.');
+
+  const before = r.billTaxes.length;
+  r.billTaxes = r.billTaxes.filter((t) => String(t._id) !== req.params.taxId);
+  if (r.billTaxes.length === before) throw ApiError.notFound('Tax not found. It may have already been deleted.');
+
+  await r.save();
+  audit({ req, action: 'BILL_TAX_DELETED', entity: 'Restaurant', entityId: r._id });
+  res.json({ success: true, data: r.billTaxes });
 };

@@ -3,7 +3,7 @@ const MenuItem = require('../models/MenuItem');
 const Outlet = require('../models/Outlet');
 const ApiError = require('../utils/ApiError');
 const { tenantMenuFilter } = require('../middleware/tenant');
-const { uploadImage, deleteImage } = require('../config/cloudinary');
+const { deleteImage } = require('../config/cloudinary');
 const { invalidateMenuCache } = require('./public.controller');
 
 async function ownerOutletId(restaurantId) {
@@ -29,7 +29,9 @@ exports.createCategory = async (req, res) => {
     outletId,
     name: req.body.name,
     parentId: req.body.parentId || null,
-    sortOrder: req.body.sortOrder || 0
+    sortOrder: req.body.sortOrder || 0,
+    imageUrl: req.body.imageUrl || undefined,
+    imagePublicId: req.body.imagePublicId || undefined
   });
   invalidateMenuCache(outletId).catch(() => {});
   res.status(201).json({ success: true, data: cat });
@@ -53,6 +55,7 @@ exports.deleteCategory = async (req, res) => {
   });
 
   if (!removed) throw ApiError.notFound('Category not found. It may have already been deleted.');
+  if (removed.imagePublicId) deleteImage(removed.imagePublicId).catch(() => {});
   invalidateMenuCache(removed.outletId).catch(() => {});
   res.json({ success: true });
 };
@@ -82,14 +85,10 @@ exports.createItem = async (req, res) => {
     prepTimeMinutes: req.body.prepTimeMinutes || 15,
     variants: safeJson(req.body.variants, []),
     addons: safeJson(req.body.addons, []),
-    taxes: safeJson(req.body.taxes, [])
+    taxes: safeJson(req.body.taxes, []),
+    imageUrl: req.body.imageUrl || undefined,
+    imagePublicId: req.body.imagePublicId || undefined
   });
-
-  if (req.file) {
-    const result = await uploadImage(req.file.buffer, `ros/${req.user.restaurantId}/menu`);
-    item.imageUrl = result.secure_url;
-    item.imagePublicId = result.public_id;
-  }
 
   await item.save();
   invalidateMenuCache(item.outletId).catch(() => {});
@@ -106,11 +105,10 @@ exports.updateItem = async (req, res) => {
   if (req.body.addons) item.addons = safeJson(req.body.addons, item.addons);
   if (req.body.taxes) item.taxes = safeJson(req.body.taxes, item.taxes);
 
-  if (req.file) {
+  if (req.body.imagePublicId !== undefined && req.body.imagePublicId !== item.imagePublicId) {
     if (item.imagePublicId) await deleteImage(item.imagePublicId).catch(() => {});
-    const result = await uploadImage(req.file.buffer, `ros/${req.user.restaurantId}/menu`);
-    item.imageUrl = result.secure_url;
-    item.imagePublicId = result.public_id;
+    item.imageUrl = req.body.imageUrl || undefined;
+    item.imagePublicId = req.body.imagePublicId || undefined;
   }
 
   await item.save();

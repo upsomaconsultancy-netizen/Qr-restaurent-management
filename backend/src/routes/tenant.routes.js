@@ -13,8 +13,13 @@ const customerAnalytics = require('../controllers/customerAnalytics.controller')
 const staff = require('../controllers/staff.controller');
 const inventory = require('../controllers/inventory.controller');
 const outlet = require('../controllers/outlet.controller');
+const uploads = require('../controllers/upload.controller');
 
 router.use(requireAuth, tenantScope);
+
+// Image uploads (pure upload-and-return, no entity mutation)
+router.post('/uploads/image', permit('OWNER', 'MANAGER'), upload.single('image'), asyncH(uploads.uploadImage));
+router.delete('/uploads/image', permit('OWNER', 'MANAGER'), asyncH(uploads.deleteImage));
 
 // Outlets
 router.get('/outlets/table-availability', permit('OWNER', 'MANAGER'), asyncH(outlet.tableAvailability));
@@ -40,8 +45,8 @@ router.get('/menu/categories', permit('OWNER', 'MANAGER', 'WAITER', 'KITCHEN'), 
 router.post('/menu/categories', permit('OWNER', 'MANAGER'), asyncH(menu.createCategory));
 router.delete('/menu/categories/:id', permit('OWNER', 'MANAGER'), asyncH(menu.deleteCategory));
 router.get('/menu/items', permit('OWNER', 'MANAGER', 'WAITER', 'KITCHEN'), asyncH(menu.listItems));
-router.post('/menu/items', permit('OWNER', 'MANAGER', 'WAITER'), upload.single('image'), asyncH(menu.createItem));
-router.patch('/menu/items/:id', permit('OWNER', 'MANAGER', 'WAITER'), upload.single('image'), asyncH(menu.updateItem));
+router.post('/menu/items', permit('OWNER', 'MANAGER', 'WAITER'), asyncH(menu.createItem));
+router.patch('/menu/items/:id', permit('OWNER', 'MANAGER', 'WAITER'), asyncH(menu.updateItem));
 router.delete('/menu/items/:id', permit('OWNER'), asyncH(menu.deleteItem));
 
 // Orders / Kitchen / Billing
@@ -69,8 +74,9 @@ router.get('/analytics/customers/:mobile',   permit('OWNER', 'MANAGER'), asyncH(
 // Restaurant profile (owner can update receipt details, GSTIN, website, service charge)
 router.get('/restaurant/profile', permit('OWNER', 'MANAGER', 'WAITER'), asyncH(require('../controllers/restaurant.controller').getProfile));
 router.patch('/restaurant/profile', permit('OWNER', 'MANAGER'), asyncH(require('../controllers/restaurant.controller').updateProfile));
-router.patch('/restaurant/logo', permit('OWNER'), upload.single('logo'), asyncH(require('../controllers/restaurant.controller').uploadLogo));
+router.patch('/restaurant/logo', permit('OWNER'), asyncH(require('../controllers/restaurant.controller').updateLogoUrl));
 router.patch('/restaurant/bill-taxes', permit('OWNER'), asyncH(require('../controllers/restaurant.controller').updateBillTaxes));
+router.delete('/restaurant/bill-taxes/:taxId', permit('OWNER'), asyncH(require('../controllers/restaurant.controller').deleteBillTax));
 
 // Staff management
 router.get('/staff', permit('OWNER', 'MANAGER'), asyncH(staff.list));

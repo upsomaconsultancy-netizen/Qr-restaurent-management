@@ -22,4 +22,13 @@ export class ApiService {
   patchForm<T>(path: string, formData: FormData) {
     return this.http.patch<{ success: boolean; data: T }>(`${this.base}${path}`, formData);
   }
+  uploadWithProgress<T>(path: string, formData: FormData) {
+    return this.http.post<{ success: boolean; data: T }>(`${this.base}${path}`, formData, {
+      reportProgress: true,
+      observe: 'events'
+    });
+  }
+  deleteWithBody<T>(path: string, body: unknown) {
+    return this.http.delete<{ success: boolean; data: T }>(`${this.base}${path}`, { body });
+  }
 }

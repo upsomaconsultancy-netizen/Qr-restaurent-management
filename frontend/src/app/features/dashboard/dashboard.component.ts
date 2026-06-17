@@ -10,13 +10,14 @@ import { MenuListComponent } from './menu-list.component';
 import { CategoryManagerComponent } from './category-manager.component';
 import { TableManagementComponent } from './table-management.component';
 import { StaffManagementComponent } from './staff-management.component';
+import { ImageUploadComponent } from '../../shared/components/image-upload.component';
 import { Chart, registerables } from 'chart.js';
 
 Chart.register(...registerables);
 
 @Component({
   standalone: true,
-  imports: [CommonModule, FormsModule, MenuListComponent, CategoryManagerComponent, TableManagementComponent, StaffManagementComponent],
+  imports: [CommonModule, FormsModule, MenuListComponent, CategoryManagerComponent, TableManagementComponent, StaffManagementComponent, ImageUploadComponent],
   template: `
     <div class="dashboard">
 
@@ -795,6 +796,20 @@ Chart.register(...registerables);
               }
             </div>
 
+            <!-- Restaurant Logo -->
+            <div style="background:#fff;border-radius:12px;box-shadow:0 1px 6px rgba(0,0,0,.08);padding:20px;margin-bottom:20px;">
+              <div style="font-weight:700;font-size:15px;margin-bottom:4px;">Restaurant Logo</div>
+              <div style="font-size:12px;color:#6b7280;margin-bottom:12px;">Shown on receipts and the customer-facing menu.</div>
+              <app-image-upload folder="logo" [imageUrl]="logoUrl()" [imagePublicId]="logoPublicId()"
+                (imageUrlChange)="logoUrl.set($event)" (imagePublicIdChange)="logoPublicId.set($event)">
+              </app-image-upload>
+              <div style="display:flex;justify-content:flex-end;margin-top:12px;">
+                <button (click)="saveLogo()" [disabled]="savingLogo() || !logoUrl()" style="background:#059669;color:#fff;border:none;border-radius:8px;padding:9px 22px;font-size:13px;cursor:pointer;font-weight:600;">
+                  {{ savingLogo() ? 'Saving...' : 'Save Logo' }}
+                </button>
+              </div>
+            </div>
+
             <!-- Bill-level taxes -->
             <div style="background:#fff;border-radius:12px;box-shadow:0 1px 6px rgba(0,0,0,.08);padding:20px;">
               <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:16px;">
@@ -820,7 +835,9 @@ Chart.register(...registerables);
                       (input)="updateBillTaxField($index, 'name', $any($event.target).value)"
                       placeholder="Tax name (e.g. GST, CGST)"
                       style="flex:1;min-width:0;padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;box-sizing:border-box;">
-                    <button (click)="removeBillTax($index)" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:18px;padding:0 4px;line-height:1;flex-shrink:0;">&#x2715;</button>
+                    <button (click)="removeBillTax($index)" [disabled]="deletingTaxId() === tax._id" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:18px;padding:0 4px;line-height:1;flex-shrink:0;">
+                      {{ deletingTaxId() === tax._id ? '...' : '✕' }}
+                    </button>
                   </div>
                   <!-- Row 2: Type + Rate + Active -->
                   <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;">
@@ -1619,8 +1636,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
   tableAvailability = signal<import('../../core/services/outlet.service').TableAvailability | null>(null);
 
   // Bill-level taxes state
-  billTaxRows = signal<{ name: string; rate: number; type: 'PERCENTAGE' | 'FLAT'; enabled: boolean }[]>([]);
+  billTaxRows = signal<{ _id?: string; name: string; rate: number; type: 'PERCENTAGE' | 'FLAT'; enabled: boolean }[]>([]);
   savingBillTaxes = signal(false);
+  deletingTaxId = signal<string | null>(null);
+  logoUrl = signal<string | null>(null);
+  logoPublicId = signal<string | null>(null);
+  savingLogo = signal(false);
 
   // Waiter notification state
   pendingServiceOrders = signal<any[]>([]);
@@ -1703,12 +1724,15 @@ export class DashboardComponent implements OnInit, OnDestroy {
         this.restaurantInfo.set(data);
         if (Array.isArray(data.billTaxes)) {
           this.billTaxRows.set(data.billTaxes.map((t: any) => ({
+            _id: t._id,
             name: t.name,
             rate: t.rate,
             type: t.type || 'PERCENTAGE',
             enabled: t.enabled !== false
           })));
         }
+        this.logoUrl.set(data.logoUrl || null);
+        this.logoPublicId.set(data.logoPublicId || null);
       }
     });
     this.loadOrders();
@@ -1816,13 +1840,53 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.outletSvc.toggleOutlet(outlet._id).subscribe({ next: () => this.loadOutlets(), error: e => console.error(e) });
   }
 
+  // ── Restaurant logo ──────────────────────────────────
+  saveLogo() {
+    if (!this.logoUrl()) return;
+    this.savingLogo.set(true);
+    this.api.patch<any>('/tenant/restaurant/logo', { logoUrl: this.logoUrl(), logoPublicId: this.logoPublicId() }).subscribe({
+      next: ({ data }) => {
+        this.savingLogo.set(false);
+        this.restaurantInfo.update(r => r ? { ...r, logoUrl: data.logoUrl } : r);
+        alert('Restaurant logo saved successfully.');
+      },
+      error: e => {
+        this.savingLogo.set(false);
+        alert(e?.error?.message || 'Failed to save logo.');
+      }
+    });
+  }
+
   // ── Bill-level tax methods ──────────────────────────────────
   addBillTax() {
     this.billTaxRows.update(rows => [...rows, { name: '', rate: 0, type: 'PERCENTAGE', enabled: true }]);
   }
 
   removeBillTax(i: number) {
-    this.billTaxRows.update(rows => rows.filter((_, idx) => idx !== i));
+    const row = this.billTaxRows()[i];
+    if (!row?._id) {
+      // Never saved to the DB yet — just drop it locally.
+      this.billTaxRows.update(rows => rows.filter((_, idx) => idx !== i));
+      return;
+    }
+    this.deletingTaxId.set(row._id);
+    this.api.delete<any>(`/tenant/restaurant/bill-taxes/${row._id}`).subscribe({
+      next: ({ data }) => {
+        this.deletingTaxId.set(null);
+        this.billTaxRows.set((data || []).map((t: any) => ({
+          _id: t._id,
+          name: t.name,
+          rate: t.rate,
+          type: t.type || 'PERCENTAGE',
+          enabled: t.enabled !== false
+        })));
+        this.restaurantInfo.update(r => r ? { ...r, billTaxes: data } : r);
+      },
+      error: e => {
+        this.deletingTaxId.set(null);
+        alert(e?.error?.message || 'Failed to delete tax.');
+      }
+    });
   }
 
   updateBillTaxField(i: number, field: string, value: any) {

@@ -24,6 +24,8 @@ export interface Category {
   name: string;
   parentId?: string;
   sortOrder: number;
+  imageUrl?: string;
+  imagePublicId?: string;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -78,27 +80,11 @@ export class MenuService {
   }
 
   // Create new item
-  createItem(item: MenuItem, imageFile?: File) {
+  createItem(item: MenuItem) {
     this.loading.set(true);
     this.error.set(null);
 
-    const formData = new FormData();
-    formData.append('name', item.name);
-    formData.append('description', item.description || '');
-    formData.append('price', item.price.toString());
-    formData.append('categoryId', item.categoryId);
-    formData.append('foodType', item.foodType);
-    formData.append('spicyLevel', item.spicyLevel.toString());
-    formData.append('prepTimeMinutes', item.prepTimeMinutes.toString());
-    formData.append('variants', JSON.stringify(item.variants));
-    formData.append('addons', JSON.stringify(item.addons));
-    formData.append('taxes', JSON.stringify(item.taxes || []));
-
-    if (imageFile) {
-      formData.append('image', imageFile);
-    }
-
-    return this.api.post<MenuItem>('/tenant/menu/items', formData).subscribe({
+    return this.api.post<MenuItem>('/tenant/menu/items', item).subscribe({
       next: ({ data }) => {
         this.items.set([...this.items(), data]);
         this.loading.set(false);
@@ -111,27 +97,11 @@ export class MenuService {
   }
 
   // Update item
-  updateItem(itemId: string, item: Partial<MenuItem>, imageFile?: File) {
+  updateItem(itemId: string, item: Partial<MenuItem>) {
     this.loading.set(true);
     this.error.set(null);
 
-    const formData = new FormData();
-    if (item.name) formData.append('name', item.name);
-    if (item.description) formData.append('description', item.description);
-    if (item.price) formData.append('price', item.price.toString());
-    if (item.categoryId) formData.append('categoryId', item.categoryId);
-    if (item.foodType) formData.append('foodType', item.foodType);
-    if (item.spicyLevel !== undefined) formData.append('spicyLevel', item.spicyLevel.toString());
-    if (item.prepTimeMinutes) formData.append('prepTimeMinutes', item.prepTimeMinutes.toString());
-    if (item.variants) formData.append('variants', JSON.stringify(item.variants));
-    if (item.addons) formData.append('addons', JSON.stringify(item.addons));
-    if (item.taxes) formData.append('taxes', JSON.stringify(item.taxes));
-
-    if (imageFile) {
-      formData.append('image', imageFile);
-    }
-
-    return this.api.patch<MenuItem>(`/tenant/menu/items/${itemId}`, formData).subscribe({
+    return this.api.patch<MenuItem>(`/tenant/menu/items/${itemId}`, item).subscribe({
       next: ({ data }) => {
         const items = this.items();
         const idx = items.findIndex(i => i._id === itemId);

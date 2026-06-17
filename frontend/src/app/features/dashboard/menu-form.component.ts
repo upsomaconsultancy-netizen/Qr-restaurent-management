@@ -2,11 +2,12 @@ import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MenuService, MenuItem, Category } from '../../core/services/menu.service';
+import { ImageUploadComponent } from '../../shared/components/image-upload.component';
 
 @Component({
   selector: 'app-menu-form',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, ImageUploadComponent],
   template: `
     <div class="modal fade" id="menuFormModal" tabindex="-1" [class.show]="showForm()" [style.display]="showForm() ? 'block' : 'none'">
       <div class="modal-dialog modal-lg">
@@ -129,12 +130,9 @@ import { MenuService, MenuItem, Category } from '../../core/services/menu.servic
               <!-- Image Upload -->
               <div class="mb-3">
                 <label class="form-label">Image (Optional)</label>
-                <input type="file" class="form-control" #imageInput (change)="onImageSelect($event)" accept="image/*">
-                @if (imagePreview()) {
-                  <div class="mt-2">
-                    <img [src]="imagePreview()" alt="Preview" style="max-width:200px;max-height:200px;" class="rounded">
-                  </div>
-                }
+                <app-image-upload folder="menu" [imageUrl]="imageUrl()" [imagePublicId]="imagePublicId()"
+                  (imageUrlChange)="imageUrl.set($event)" (imagePublicIdChange)="imagePublicId.set($event)">
+                </app-image-upload>
               </div>
 
               <!-- Variants JSON -->
@@ -179,8 +177,8 @@ export class MenuFormComponent implements OnInit {
   showForm = signal(false);
   editingId = signal<string | null>(null);
   error = signal<string | null>(null);
-  imageFile = signal<File | null>(null);
-  imagePreview = signal<string | null>(null);
+  imageUrl = signal<string | null>(null);
+  imagePublicId = signal<string | null>(null);
 
   formData: Partial<MenuItem> = {
     name: '',
@@ -211,7 +209,8 @@ export class MenuFormComponent implements OnInit {
       };
       this.variantsJson = JSON.stringify(item.variants || []);
       this.addonsJson = JSON.stringify(item.addons || []);
-      if (item.imageUrl) this.imagePreview.set(item.imageUrl);
+      this.imageUrl.set(item.imageUrl || null);
+      this.imagePublicId.set(item.imagePublicId || null);
     } else {
       this.resetForm();
     }
@@ -226,8 +225,8 @@ export class MenuFormComponent implements OnInit {
   resetForm() {
     this.editingId.set(null);
     this.error.set(null);
-    this.imageFile.set(null);
-    this.imagePreview.set(null);
+    this.imageUrl.set(null);
+    this.imagePublicId.set(null);
     this.formData = {
       name: '',
       description: '',
@@ -244,17 +243,6 @@ export class MenuFormComponent implements OnInit {
     this.addonsJson = '[]';
   }
 
-  onImageSelect(event: Event) {
-    const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
-    if (file) {
-      this.imageFile.set(file);
-      const reader = new FileReader();
-      reader.onload = (e) => this.imagePreview.set(e.target?.result as string);
-      reader.readAsDataURL(file);
-    }
-  }
-
   submitForm() {
     try {
       const variants = JSON.parse(this.variantsJson || '[]');
@@ -264,13 +252,15 @@ export class MenuFormComponent implements OnInit {
         ...this.formData,
         variants,
         addons,
-        taxes: this.formData.taxes || []
+        taxes: this.formData.taxes || [],
+        imageUrl: this.imageUrl() || undefined,
+        imagePublicId: this.imagePublicId() || undefined
       };
 
       if (this.editingId()) {
-        this.menu.updateItem(this.editingId()!, itemData, this.imageFile() || undefined);
+        this.menu.updateItem(this.editingId()!, itemData);
       } else {
-        this.menu.createItem(itemData as MenuItem, this.imageFile() || undefined);
+        this.menu.createItem(itemData as MenuItem);
       }
 
       setTimeout(() => this.closeForm(), 500);

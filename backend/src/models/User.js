@@ -20,9 +20,10 @@ const userSchema = new mongoose.Schema(
 );
 
 userSchema.index({ email: 1, restaurantId: 1 }, { unique: true });
+userSchema.index({ email: 1, isDeleted: 1 });
 
 userSchema.methods.setPassword = async function (plain) {
-  this.passwordHash = await bcrypt.hash(plain, 12);
+  this.passwordHash = await bcrypt.hash(plain, 6);
 };
 userSchema.methods.checkPassword = function (plain) {
   return bcrypt.compare(plain, this.passwordHash);
