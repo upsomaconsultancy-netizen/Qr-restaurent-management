@@ -1,0 +1,32 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+
+  <!-- Background transparent -->
+  <rect width="256" height="256" fill="transparent"/>
+
+  <!-- U Letter (Upsoma Style) -->
+  <path d="M70 40 
+           C60 40 54 46 54 58 
+           V150 
+           C54 198 90 220 128 220 
+           C166 220 202 198 202 150 
+           V58 
+           C202 46 196 40 186 40 
+           C176 40 170 46 170 58 
+           V148 
+           C170 178 150 196 128 196 
+           C106 196 86 178 86 148 
+           V58 
+           C86 46 80 40 70 40 
+           Z"
+
+        fill="url(#grad)" />
+
+  <!-- Gradient (Upsoma Color Style) -->
+  <defs>
+    <linearGradient id="grad" x1="50" y1="40" x2="210" y2="210" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1D1F2F"/>
+      <stop offset="100%" stop-color="#1CC8A0"/>
+    </linearGradient>
+  </defs>
+
+</svg>
