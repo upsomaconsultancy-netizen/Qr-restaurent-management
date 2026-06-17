@@ -1,3 +1,4 @@
+import '@angular/compiler';
 import { CommonEngine } from '@angular/ssr';
 import { APP_BASE_HREF } from '@angular/common';
 import { join, dirname } from 'node:path';
