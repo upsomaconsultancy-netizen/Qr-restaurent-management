@@ -4,7 +4,7 @@ const Outlet = require('../models/Outlet');
 // Short TTL on purpose: a deactivated outlet must stop accepting logins within
 // seconds even if an explicit invalidation is ever missed. login/refresh read
 // this cached flag instead of hitting MongoDB on every attempt.
-const OUTLET_STATUS_TTL = 30; // seconds
+const OUTLET_STATUS_TTL = 60; // seconds
 const statusKey = (outletId) => `auth:outlet:active:${outletId}`;
 
 /**
