@@ -11,7 +11,7 @@ import { RouterLink } from '@angular/router';
       <div class="mk-footer-inner">
         <div class="mk-foot-brand">
           <div class="mk-foot-brand-row">
-            <span class="mk-logo-box" aria-hidden="true"></span>
+            <img src="/upsomalogo.png" alt="Upsoma Restro" class="mk-logo-box">
             <span class="mk-foot-name">Upsoma Restro</span>
           </div>
           <p class="mk-foot-tag">
@@ -63,7 +63,7 @@ import { RouterLink } from '@angular/router';
     .mk-foot-brand-row { display: flex; align-items: center; gap: .6rem; margin-bottom: .9rem; }
     .mk-logo-box {
       width: 34px; height: 34px; border-radius: 9px;
-      background: linear-gradient(135deg, #e8542f, #ff7a4d); flex-shrink: 0;
+      object-fit: cover; flex-shrink: 0;
     }
     .mk-foot-name { font-family: 'Sora', sans-serif; font-weight: 700; font-size: 1.1rem; color: #fff; }
     .mk-foot-tag { font-size: .9rem; line-height: 1.6; max-width: 340px; color: #9aa0ab; }

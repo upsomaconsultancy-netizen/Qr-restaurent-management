@@ -33,16 +33,9 @@ import { AuthService } from '../../core/services/auth.service';
     .brand-logo {
       width: 46px;
       height: 46px;
-      background: #1D9E75;
       border-radius: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      object-fit: cover;
       flex-shrink: 0;
-    }
-    .brand-logo svg {
-      width: 28px;
-      height: 28px;
     }
     .brand-name {
       font-size: 18px;
@@ -188,7 +181,7 @@ import { AuthService } from '../../core/services/auth.service';
 
       <!-- Brand -->
       <div class="brand">
-        
+        <img src="/upsomalogo.png" alt="Upsoma Restro" class="brand-logo">
         <div>
           <p class="brand-name">Upsoma Restro</p>
           <p class="brand-sub">Staff &amp; admin portal</p>

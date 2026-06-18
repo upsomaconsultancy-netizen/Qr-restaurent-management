@@ -2,7 +2,14 @@
   "permissions": {
     "allow": [
       "Bash(npm run *)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(cd \"/e/Restaurent-qrmanage/restaurant-os/frontend\" && cat package.json | grep -A5 '\"scripts\"')",
+      "Read(//e/e/Restaurent-qrmanage/restaurant-os/frontend/**)",
+      "Bash(npx ng *)",
+      "Bash(cd \"/e/Restaurent-qrmanage/restaurant-os/frontend\" && rm -rf dist)"
+    ],
+    "additionalDirectories": [
+      "e:\\e\\Restaurent-qrmanage\\restaurant-os\\frontend"
     ]
   }
 }

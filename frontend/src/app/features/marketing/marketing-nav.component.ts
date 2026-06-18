@@ -2,8 +2,7 @@ import { Component, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
 /**
- * Shared marketing site top navigation. Logo area is intentionally left blank
- * (placeholder box) for the brand logo to be dropped in later.
+ * Shared marketing site top navigation.
  */
 @Component({
   selector: 'mkt-nav',
@@ -13,8 +12,7 @@ import { RouterLink } from '@angular/router';
     <header class="mk-nav" [class.scrolled]="true">
       <nav class="mk-nav-inner" aria-label="Primary">
         <a routerLink="/" class="mk-brand" aria-label="Upsoma Restro home">
-          <!-- Blank logo placeholder — drop the brand logo image here -->
-          <span class="mk-logo-box" aria-hidden="true"></span>
+          <img src="/upsomalogo.png" alt="Upsoma Restro" class="mk-logo-box">
           <span class="mk-brand-name">Upsoma&nbsp;Restro</span>
         </a>
 
@@ -53,8 +51,7 @@ import { RouterLink } from '@angular/router';
     .mk-brand { display: flex; align-items: center; gap: .6rem; text-decoration: none; }
     .mk-logo-box {
       width: 38px; height: 38px; border-radius: 10px;
-      background: linear-gradient(135deg, #fdeae3, #ffd9cb);
-      border: 1px dashed #e8a98f; flex-shrink: 0;
+      object-fit: cover; flex-shrink: 0;
     }
     .mk-brand-name {
       font-family: 'Sora', sans-serif; font-weight: 700; font-size: 1.15rem; color: #16181d;
