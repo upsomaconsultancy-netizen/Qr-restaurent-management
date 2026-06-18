@@ -248,6 +248,46 @@ interface Faq { q: string; a: string; }
         </div>
       </section>
 
+      <!-- ── Referral / Service Partner offer ── -->
+      <section id="referral" class="lp-section">
+        <div class="lp-referral reveal">
+          <div class="lp-referral-copy">
+            <span class="lp-kicker light"><i class="fa-solid fa-handshake-angle"></i> Service Partner Program</span>
+            <h2>Refer a restaurant. Get a month on us.</h2>
+            <p>
+              Become an Upsoma Restro service partner and refer us to another restaurant.
+              When they come on board, you get <strong>1 month of free service</strong> for
+              2 tables with up to 4 max capacity — completely free.
+            </p>
+            <div class="lp-referral-steps">
+              <div class="lp-referral-step">
+                <span class="lp-referral-num">1</span>
+                <div><strong>Become a partner</strong><span>Join our service partner program — it's free.</span></div>
+              </div>
+              <div class="lp-referral-step">
+                <span class="lp-referral-num">2</span>
+                <div><strong>Refer a restaurant</strong><span>Introduce us to a restaurant that signs up.</span></div>
+              </div>
+              <div class="lp-referral-step">
+                <span class="lp-referral-num">3</span>
+                <div><strong>Get 1 month free</strong><span>Free service for 2 tables with up to 4 max capacity.</span></div>
+              </div>
+            </div>
+            <a href="#contact" class="btn-ember"><i class="fa-solid fa-gift"></i> Become a Service Partner</a>
+          </div>
+          <div class="lp-referral-card">
+            <div class="lp-referral-badge"><i class="fa-solid fa-gift"></i> Partner Reward</div>
+            <div class="lp-referral-big">1 Month <span>FREE</span></div>
+            <div class="lp-referral-sub">on 2 tables with up to 4 max capacity</div>
+            <ul class="lp-referral-list">
+              <li><i class="fa-solid fa-check"></i> For every restaurant you refer</li>
+              <li><i class="fa-solid fa-check"></i> No charge for the whole restaurant</li>
+              <li><i class="fa-solid fa-check"></i> Stacks with the 10-day free trial</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
       <!-- ── FAQ (AEO: FAQPage schema) ── -->
       <section id="faq" class="lp-section lp-section-alt">
         <div class="lp-head reveal">
@@ -556,6 +596,41 @@ interface Faq { q: string; a: string; }
     .lp-trial-banner strong { display: block; font-family: 'Sora', sans-serif; font-size: 1.15rem; }
     .lp-trial-banner span { display: block; color: #c6ebd6; font-size: .9rem; line-height: 1.5; margin-top: .15rem; }
 
+    /* Referral / Service Partner */
+    .lp-referral {
+      max-width: 1120px; margin: 0 auto; display: grid; grid-template-columns: 1.3fr 1fr;
+      gap: 2.5rem; align-items: center; background: #16181d; border-radius: 24px;
+      padding: 2.75rem 3rem; color: #fff;
+    }
+    .lp-referral-copy h2 { color: #fff; font-size: clamp(1.6rem, 3vw, 2.2rem); margin: .6rem 0 .8rem; }
+    .lp-referral-copy p { color: #b6bac2; line-height: 1.65; margin: 0 0 1.6rem; max-width: 46ch; }
+    .lp-referral-copy p strong { color: #ff9a73; }
+    .lp-referral-steps { display: grid; gap: .9rem; margin: 0 0 1.8rem; }
+    .lp-referral-step { display: flex; align-items: flex-start; gap: .85rem; }
+    .lp-referral-num {
+      flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%;
+      background: #e8542f; color: #fff; font-weight: 700; font-size: .85rem;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .lp-referral-step strong { display: block; color: #fff; font-size: .98rem; }
+    .lp-referral-step span { display: block; color: #9ca0a9; font-size: .88rem; line-height: 1.5; margin-top: .1rem; }
+    .lp-referral-card {
+      background: linear-gradient(160deg, #1d7a4f, #14543a); border-radius: 18px;
+      padding: 2rem 1.75rem; text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,.3);
+    }
+    .lp-referral-badge {
+      display: inline-flex; align-items: center; gap: .4rem; background: rgba(255,255,255,.14);
+      color: #d4f5e2; font-size: .8rem; font-weight: 600; padding: .35rem .85rem; border-radius: 999px;
+    }
+    .lp-referral-big {
+      font-family: 'Sora', sans-serif; font-size: 2.4rem; font-weight: 800; color: #fff; margin: 1rem 0 .15rem;
+    }
+    .lp-referral-big span { color: #ffd479; }
+    .lp-referral-sub { color: #c6ebd6; font-size: .95rem; margin-bottom: 1.4rem; }
+    .lp-referral-list { list-style: none; padding: 0; margin: 0; display: grid; gap: .6rem; text-align: left; }
+    .lp-referral-list li { color: #eafaf1; font-size: .9rem; display: flex; align-items: flex-start; gap: .55rem; }
+    .lp-referral-list li i { color: #8ef0b8; margin-top: .2rem; font-size: .82rem; }
+
     .lp-price-soon { background: #faf6f2; border-style: dashed; border-color: #e3d6cb; }
     .lp-price-soon .lp-price-seats { color: #a98c7c; }
     .lp-soon-badge {
@@ -616,7 +691,8 @@ interface Faq { q: string; a: string; }
       .lp-feat-grid { grid-template-columns: repeat(3, 1fr); }
     }
     @media (max-width: 940px) {
-      .lp-hero-grid, .lp-showcase-grid, .lp-contact-grid, .lp-sig-grid { grid-template-columns: 1fr; }
+      .lp-hero-grid, .lp-showcase-grid, .lp-contact-grid, .lp-sig-grid, .lp-referral { grid-template-columns: 1fr; }
+      .lp-referral { padding: 2.25rem 1.5rem; gap: 1.75rem; }
       .lp-hero-art { order: -1; }
       .lp-hero-copy { text-align: center; }
       .lp-lede { margin-left: auto; margin-right: auto; }

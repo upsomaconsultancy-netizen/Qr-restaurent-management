@@ -41,6 +41,7 @@ interface CartLine {
 }
 
 const CUSTOMER_TOKEN_PREFIX = "ros_cust_token_";
+const PAST_ORDERS_PREFIX = "ros_cust_past_";
 
 @Component({
   standalone: true,
@@ -455,21 +456,34 @@ const CUSTOMER_TOKEN_PREFIX = "ros_cust_token_";
                   }
                 </div>
 
+                @if (b.tip) {
+                  <div class="cm-tip-added">
+                    💚 You added a ₹{{ b.tip.amount }} tip@if (b.tip.waiterName) { for {{ b.tip.waiterName }}} — thank you!
+                  </div>
+                }
+
                 @if (b.paid) {
                   <div class="cm-paid-banner">
                     🎉 Bill cleared — Thank you for dining with us!
                   </div>
                 }
 
-                <!-- Payment Coming Soon -->
+                <!-- Payment + Tip -->
                 @if (b.canPay && !b.paid) {
                   <div class="cm-payment-section">
-                    <button
-                      class="cm-pay-btn"
-                      (click)="showPaymentComingSoon = true"
-                    >
-                      💳 Proceed to Payment
-                    </button>
+                    <div class="cm-pay-row">
+                      <button
+                        class="cm-pay-btn"
+                        (click)="showPaymentComingSoon = true"
+                      >
+                        💳 Proceed to Payment
+                      </button>
+                      @if (!b.tip) {
+                        <button class="cm-tip-btn" (click)="openTip()">
+                          💝 Give Tip
+                        </button>
+                      }
+                    </div>
                   </div>
                 }
 
@@ -490,14 +504,18 @@ const CUSTOMER_TOKEN_PREFIX = "ros_cust_token_";
           <!-- Previous Visits -->
           @if (pastOrders().length) {
             <div class="cm-history-card">
-              <div class="cm-history-head">🕐 Your Previous Visits</div>
+              <div class="cm-history-head">
+                <span class="cm-history-ico">🧾</span>
+                <span>Your Previous Orders</span>
+                <span class="cm-history-count">{{ pastOrders().length }}</span>
+              </div>
               @for (visit of pastOrders(); track $index) {
                 <div class="cm-history-row">
-                  <div class="cm-history-date">
-                    {{ visit.date | date: "dd MMM yyyy" }}
-                  </div>
-                  <div class="cm-history-items">
-                    {{ visit.items.join(", ") }}
+                  <div class="cm-history-main">
+                    <div class="cm-history-items">{{ visit.items.join(", ") }}</div>
+                    <div class="cm-history-date">
+                      {{ visit.date | date: "dd MMM yyyy, hh:mm a" }}
+                    </div>
                   </div>
                   <div class="cm-history-total">₹{{ visit.total }}</div>
                 </div>
@@ -616,6 +634,57 @@ const CUSTOMER_TOKEN_PREFIX = "ros_cust_token_";
           >
             Got it
           </button>
+        </div>
+      </div>
+    }
+
+    <!-- ── Give Tip Modal ── -->
+    @if (showTipModal()) {
+      <div class="cm-modal-overlay" (click)="closeTip()">
+        <div class="cm-modal" (click)="$event.stopPropagation()">
+          <div class="cm-modal-icon">💝</div>
+          <h3 class="cm-modal-title">Give a Tip</h3>
+          <p class="cm-modal-body">
+            Show your appreciation to the staff who served you. Tips are not part
+            of your bill.
+          </p>
+          <div class="cm-tip-chips">
+            @for (a of tipPresets; track a) {
+              <button
+                type="button"
+                class="cm-tip-chip"
+                [class.active]="tipAmount === a"
+                (click)="tipAmount = a"
+              >
+                ₹{{ a }}
+              </button>
+            }
+          </div>
+          <div class="cm-form-group">
+            <label class="cm-label">💰 Tip Amount *</label>
+            <input
+              class="cm-input"
+              type="number"
+              min="1"
+              [(ngModel)]="tipAmount"
+              placeholder="Enter amount"
+            />
+          </div>
+          @if (tipError()) {
+            <div class="cm-input-msg cm-input-msg-err">{{ tipError() }}</div>
+          }
+          <button
+            class="cm-submit-btn"
+            (click)="submitTip()"
+            [disabled]="submittingTip()"
+          >
+            @if (submittingTip()) {
+              Adding…
+            } @else {
+              Add
+            }
+          </button>
+          <button class="cm-modal-cancel" (click)="closeTip()">Cancel</button>
         </div>
       </div>
     }
@@ -833,11 +902,14 @@ const CUSTOMER_TOKEN_PREFIX = "ros_cust_token_";
         --primary-dark: #c94120;
         --text: #111827;
         --text-muted: #6b7280;
-        --border: #e5e7eb;
+        --border: #ececf0;
         --surface: #ffffff;
-        --bg: #f9fafb;
-        --radius: 12px;
-        --radius-sm: 8px;
+        --bg: #f4f5f7;
+        --radius: 14px;
+        --radius-sm: 10px;
+        --shadow-sm: 0 1px 3px rgba(17, 24, 39, 0.06);
+        --shadow-md: 0 6px 20px rgba(17, 24, 39, 0.07);
+        --shadow-primary: 0 6px 18px rgba(232, 84, 47, 0.35);
         font-family: "Inter", system-ui, sans-serif;
         -webkit-font-smoothing: antialiased;
       }
@@ -848,65 +920,80 @@ const CUSTOMER_TOKEN_PREFIX = "ros_cust_token_";
       }
       .cm-page {
         min-height: 100dvh;
-        background: var(--bg);
+        background:
+          radial-gradient(1200px 320px at 50% -120px, #fdeae3 0%, transparent 70%),
+          var(--bg);
         max-width: 600px;
         margin: 0 auto;
       }
       .cm-header {
-        background: var(--surface);
+        background: rgba(255, 255, 255, 0.82);
+        backdrop-filter: saturate(180%) blur(14px);
+        -webkit-backdrop-filter: saturate(180%) blur(14px);
         border-bottom: 1px solid var(--border);
         position: sticky;
         top: 0;
         z-index: 50;
-        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+        box-shadow: var(--shadow-sm);
       }
       .cm-header-inner {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 0.875rem 1rem;
+        padding: 0.8rem 1rem;
       }
       .cm-resto-info {
         display: flex;
         align-items: center;
-        gap: 0.625rem;
+        gap: 0.7rem;
       }
       .cm-logo {
-        width: 38px;
-        height: 38px;
+        width: 42px;
+        height: 42px;
         border-radius: 50%;
         object-fit: cover;
+        border: 2px solid #fff;
+        box-shadow: 0 0 0 1.5px var(--primary-light), var(--shadow-sm);
       }
       .cm-resto-avatar {
-        width: 38px;
-        height: 38px;
+        width: 42px;
+        height: 42px;
         border-radius: 50%;
-        background: var(--primary);
+        background: linear-gradient(135deg, var(--primary), var(--primary-dark));
         color: white;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 1rem;
-        font-weight: 700;
+        font-size: 1.05rem;
+        font-weight: 800;
         flex-shrink: 0;
+        box-shadow: var(--shadow-primary);
       }
       .cm-resto-name {
-        font-size: 0.95rem;
-        font-weight: 700;
+        font-size: 1rem;
+        font-weight: 800;
+        letter-spacing: -0.01em;
         color: var(--text);
       }
       .cm-table-badge {
+        display: inline-flex;
+        align-items: center;
         font-size: 0.72rem;
-        color: var(--text-muted);
-        margin-top: 0.1rem;
+        font-weight: 600;
+        color: var(--primary-dark);
+        background: var(--primary-light);
+        padding: 0.12rem 0.5rem;
+        border-radius: 999px;
+        margin-top: 0.2rem;
       }
       .cm-order-type-chip {
         font-size: 0.75rem;
-        font-weight: 600;
-        background: var(--primary-light);
-        color: var(--primary);
-        padding: 0.3rem 0.75rem;
-        border-radius: 2rem;
+        font-weight: 700;
+        background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+        color: #fff;
+        padding: 0.35rem 0.8rem;
+        border-radius: 999px;
+        box-shadow: var(--shadow-primary);
       }
       .cm-header-actions {
         display: flex;
@@ -941,10 +1028,11 @@ const CUSTOMER_TOKEN_PREFIX = "ros_cust_token_";
       /* Identity Form */
       .cm-identity-card {
         background: var(--surface);
-        border-radius: var(--radius);
+        border-radius: 20px;
         padding: 2rem 1.5rem;
         margin: 1rem;
-        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+        border: 1px solid var(--border);
+        box-shadow: var(--shadow-md);
         text-align: center;
       }
       .cm-identity-icon {
@@ -988,19 +1076,23 @@ const CUSTOMER_TOKEN_PREFIX = "ros_cust_token_";
       }
       .cm-submit-btn {
         width: 100%;
-        padding: 0.85rem;
-        background: var(--primary);
+        padding: 0.9rem;
+        background: linear-gradient(135deg, var(--primary), var(--primary-dark));
         color: white;
         border: none;
-        border-radius: var(--radius-sm);
+        border-radius: 12px;
         font-size: 0.95rem;
         font-weight: 700;
         cursor: pointer;
         margin-top: 0.5rem;
-        transition: background 0.18s;
+        box-shadow: var(--shadow-primary);
+        transition: all 0.18s;
       }
       .cm-submit-btn:hover {
-        background: var(--primary-dark);
+        filter: brightness(1.05);
+      }
+      .cm-submit-btn:active {
+        transform: scale(0.99);
       }
       .cm-submit-btn:disabled {
         opacity: 0.7;
@@ -1010,10 +1102,11 @@ const CUSTOMER_TOKEN_PREFIX = "ros_cust_token_";
       /* Order type */
       .cm-choose-card {
         background: var(--surface);
-        border-radius: var(--radius);
-        padding: 2rem 1.5rem;
+        border-radius: 20px;
+        padding: 2.25rem 1.5rem;
         margin: 1rem;
-        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+        border: 1px solid var(--border);
+        box-shadow: var(--shadow-md);
         text-align: center;
       }
       .cm-choose-icon {
@@ -1040,22 +1133,30 @@ const CUSTOMER_TOKEN_PREFIX = "ros_cust_token_";
         display: flex;
         align-items: center;
         gap: 0.875rem;
-        padding: 1rem 1.25rem;
-        border-radius: var(--radius-sm);
-        border: 2px solid transparent;
+        padding: 1.05rem 1.25rem;
+        border-radius: 14px;
+        border: 1.5px solid transparent;
         cursor: pointer;
         text-align: left;
         transition: all 0.18s;
         width: 100%;
       }
+      .cm-opt-btn:active {
+        transform: scale(0.985);
+      }
       .cm-opt-primary {
-        background: var(--primary);
+        background: linear-gradient(135deg, var(--primary), var(--primary-dark));
         color: white;
+        box-shadow: var(--shadow-primary);
       }
       .cm-opt-secondary {
         background: var(--surface);
         color: var(--text);
         border-color: var(--border);
+        box-shadow: var(--shadow-sm);
+      }
+      .cm-opt-secondary:hover {
+        border-color: var(--primary);
       }
       .cm-opt-emoji {
         font-size: 1.5rem;
@@ -1080,7 +1181,7 @@ const CUSTOMER_TOKEN_PREFIX = "ros_cust_token_";
         border-bottom: 1px solid var(--border);
         padding: 0.625rem 1rem;
         position: sticky;
-        top: 65px;
+        top: 68px;
         z-index: 41;
       }
       .cm-search-inner {
@@ -1089,11 +1190,13 @@ const CUSTOMER_TOKEN_PREFIX = "ros_cust_token_";
         align-items: center;
         background: var(--bg);
         border: 1.5px solid var(--border);
-        border-radius: var(--radius-sm);
-        transition: border-color 0.18s;
+        border-radius: 999px;
+        transition: all 0.18s;
       }
       .cm-search-inner:focus-within {
         border-color: var(--primary);
+        background: #fff;
+        box-shadow: 0 0 0 4px var(--primary-light);
       }
       .cm-search-icon {
         position: absolute;
@@ -1145,13 +1248,23 @@ const CUSTOMER_TOKEN_PREFIX = "ros_cust_token_";
           transform: rotate(360deg);
         }
       }
+      @keyframes cmFadeUp {
+        from {
+          opacity: 0;
+          transform: translateY(8px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
 
       /* Categories */
       .cm-cats-wrap {
         background: var(--surface);
         border-bottom: 1px solid var(--border);
         position: sticky;
-        top: 112px;
+        top: 116px;
         z-index: 40;
       }
       .cm-cats {
@@ -1178,27 +1291,47 @@ const CUSTOMER_TOKEN_PREFIX = "ros_cust_token_";
         flex-shrink: 0;
       }
       .cm-cat-pill.active {
-        background: var(--primary);
-        border-color: var(--primary);
+        background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+        border-color: transparent;
         color: white;
-        font-weight: 600;
+        font-weight: 700;
+        box-shadow: var(--shadow-primary);
       }
       .cm-items-count {
-        font-size: 0.75rem;
+        font-size: 0.74rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
         color: var(--text-muted);
-        padding: 0.625rem 1rem 0.25rem;
+        padding: 0.8rem 1rem 0.15rem;
       }
 
       /* Menu items */
       .cm-item-card {
         background: var(--surface);
-        border-bottom: 1px solid var(--border);
-        padding: 0.875rem 1rem;
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 0.85rem 0.9rem;
+        margin: 0.55rem 1rem;
+        box-shadow: var(--shadow-sm);
+        animation: cmFadeUp 0.3s ease both;
+        transition:
+          transform 0.16s ease,
+          box-shadow 0.16s ease;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .cm-item-card {
+          animation: none;
+        }
+      }
+      .cm-item-card:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-md);
       }
       .cm-item-body {
         display: flex;
         align-items: flex-start;
-        gap: 0.75rem;
+        gap: 0.85rem;
       }
       .cm-item-veg-dot {
         flex-shrink: 0;
@@ -1209,8 +1342,9 @@ const CUSTOMER_TOKEN_PREFIX = "ros_cust_token_";
         min-width: 0;
       }
       .cm-item-name {
-        font-size: 0.92rem;
-        font-weight: 600;
+        font-size: 0.95rem;
+        font-weight: 700;
+        letter-spacing: -0.01em;
         color: var(--text);
       }
       .cm-item-desc {
@@ -1240,10 +1374,10 @@ const CUSTOMER_TOKEN_PREFIX = "ros_cust_token_";
         border-radius: 0.25rem;
       }
       .cm-item-price {
-        font-size: 1rem;
-        font-weight: 700;
-        color: var(--text);
-        margin-top: 0.3rem;
+        font-size: 1.02rem;
+        font-weight: 800;
+        color: var(--primary-dark);
+        margin-top: 0.35rem;
       }
       .cm-item-actions {
         display: flex;
@@ -1253,60 +1387,75 @@ const CUSTOMER_TOKEN_PREFIX = "ros_cust_token_";
         flex-shrink: 0;
       }
       .cm-item-img {
-        width: 72px;
-        height: 72px;
+        width: 84px;
+        height: 84px;
         object-fit: cover;
-        border-radius: var(--radius-sm);
+        border-radius: 14px;
+        box-shadow: var(--shadow-sm);
       }
       .cm-item-img-ph {
-        width: 72px;
-        height: 72px;
-        border-radius: var(--radius-sm);
-        background: var(--bg);
+        width: 84px;
+        height: 84px;
+        border-radius: 14px;
+        background: linear-gradient(135deg, #fff6f2, var(--primary-light));
         border: 1px solid var(--border);
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 1.5rem;
+        font-size: 1.7rem;
       }
       .cm-add-btn {
-        padding: 0.3rem 0.75rem;
+        margin-top: -16px;
+        position: relative;
+        padding: 0.45rem 1.4rem;
         background: var(--surface);
-        border: 2px solid var(--primary);
+        border: 1.5px solid var(--primary);
         color: var(--primary);
-        border-radius: var(--radius-sm);
-        font-size: 0.78rem;
-        font-weight: 700;
+        border-radius: 999px;
+        font-size: 0.8rem;
+        font-weight: 800;
+        letter-spacing: 0.03em;
         cursor: pointer;
-        transition: all 0.18s;
+        box-shadow: var(--shadow-sm);
+        transition: all 0.16s;
       }
       .cm-add-btn:hover {
         background: var(--primary);
         color: white;
+        box-shadow: var(--shadow-primary);
+      }
+      .cm-add-btn:active {
+        transform: scale(0.95);
       }
       .cm-qty-ctrl {
+        margin-top: -16px;
+        position: relative;
         display: flex;
         align-items: center;
         gap: 0.25rem;
-        background: var(--primary);
-        border-radius: var(--radius-sm);
+        background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+        border-radius: 999px;
         overflow: hidden;
+        box-shadow: var(--shadow-primary);
       }
       .cm-qty-btn {
-        width: 28px;
-        height: 28px;
+        width: 30px;
+        height: 30px;
         border: none;
         background: transparent;
         color: white;
-        font-size: 1.1rem;
+        font-size: 1.15rem;
         font-weight: 700;
         cursor: pointer;
+      }
+      .cm-qty-btn:active {
+        background: rgba(255, 255, 255, 0.18);
       }
       .cm-qty-num {
         min-width: 22px;
         text-align: center;
-        font-size: 0.85rem;
-        font-weight: 700;
+        font-size: 0.88rem;
+        font-weight: 800;
         color: white;
       }
       .cm-empty-cat {
@@ -1337,9 +1486,10 @@ const CUSTOMER_TOKEN_PREFIX = "ros_cust_token_";
         cursor: pointer;
       }
       .cm-page-num.active {
-        background: var(--primary);
+        background: linear-gradient(135deg, var(--primary), var(--primary-dark));
         color: white;
-        border-color: var(--primary);
+        border-color: transparent;
+        box-shadow: var(--shadow-primary);
       }
       .cm-page-nav:disabled {
         opacity: 0.4;
@@ -1350,20 +1500,21 @@ const CUSTOMER_TOKEN_PREFIX = "ros_cust_token_";
       .cm-bill-card {
         background: var(--surface);
         margin: 1rem;
-        border-radius: var(--radius);
+        border-radius: 16px;
         border: 1px solid var(--border);
         overflow: hidden;
+        box-shadow: 0 4px 18px rgba(17, 24, 39, 0.06);
       }
       .cm-bill-head {
         display: flex;
         align-items: center;
         gap: 0.5rem;
         padding: 0.875rem 1rem;
-        background: var(--bg);
+        background: linear-gradient(135deg, var(--primary-light), #fff6f2);
         border-bottom: 1px solid var(--border);
-        font-size: 0.9rem;
-        font-weight: 700;
-        color: var(--text);
+        font-size: 0.92rem;
+        font-weight: 800;
+        color: var(--primary-dark);
       }
       .cm-paid-chip {
         margin-left: auto;
@@ -1464,12 +1615,13 @@ const CUSTOMER_TOKEN_PREFIX = "ros_cust_token_";
         font-weight: 700;
       }
       .cm-paid-banner {
-        background: #d1fae5;
+        background: linear-gradient(135deg, #d1fae5, #ecfdf5);
         color: #065f46;
-        padding: 0.75rem 1rem;
-        font-size: 0.82rem;
-        font-weight: 600;
+        padding: 0.9rem 1rem;
+        font-size: 0.86rem;
+        font-weight: 700;
         text-align: center;
+        border-top: 1px solid #a7f3d0;
       }
 
       /* Payment */
@@ -1479,18 +1631,75 @@ const CUSTOMER_TOKEN_PREFIX = "ros_cust_token_";
       }
       .cm-pay-btn {
         width: 100%;
-        padding: 0.85rem;
-        background: #16a34a;
+        padding: 0.9rem;
+        background: linear-gradient(135deg, #16a34a, #15803d);
         color: white;
         border: none;
+        border-radius: 12px;
+        font-size: 0.92rem;
+        font-weight: 700;
+        cursor: pointer;
+        transition: all 0.18s;
+        box-shadow: 0 4px 16px rgba(22, 163, 74, 0.35);
+      }
+      .cm-pay-btn:hover {
+        filter: brightness(1.05);
+      }
+      .cm-pay-row {
+        display: flex;
+        gap: 0.5rem;
+      }
+      .cm-pay-row .cm-pay-btn {
+        flex: 1;
+      }
+      .cm-tip-btn {
+        flex: 0 0 auto;
+        padding: 0.85rem 1rem;
+        background: #fff;
+        color: #be185d;
+        border: 1.5px solid #fbcfe8;
         border-radius: var(--radius-sm);
         font-size: 0.9rem;
         font-weight: 700;
         cursor: pointer;
+        white-space: nowrap;
         transition: background 0.18s;
       }
-      .cm-pay-btn:hover {
-        background: #15803d;
+      .cm-tip-btn:hover {
+        background: #fdf2f8;
+      }
+      .cm-tip-added {
+        margin: 0.75rem 1rem 0;
+        padding: 0.6rem 0.85rem;
+        background: #ecfdf5;
+        color: #047857;
+        border: 1px solid #a7f3d0;
+        border-radius: var(--radius-sm);
+        font-size: 0.82rem;
+        font-weight: 600;
+        text-align: center;
+      }
+      .cm-tip-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        justify-content: center;
+        margin-bottom: 0.85rem;
+      }
+      .cm-tip-chip {
+        padding: 0.45rem 0.95rem;
+        background: #fff;
+        color: #be185d;
+        border: 1.5px solid #fbcfe8;
+        border-radius: 999px;
+        font-size: 0.85rem;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .cm-tip-chip.active {
+        background: #be185d;
+        color: #fff;
+        border-color: #be185d;
       }
 
       /* Receipt */
@@ -1525,45 +1734,79 @@ const CUSTOMER_TOKEN_PREFIX = "ros_cust_token_";
       .cm-history-card {
         background: var(--surface);
         margin: 1rem;
-        border-radius: var(--radius);
+        border-radius: 16px;
         border: 1px solid var(--border);
         overflow: hidden;
+        box-shadow: 0 4px 16px rgba(17, 24, 39, 0.05);
       }
       .cm-history-head {
-        padding: 0.75rem 1rem;
-        background: var(--bg);
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.8rem 1rem;
+        background: linear-gradient(135deg, var(--primary-light), #fff6f2);
         border-bottom: 1px solid var(--border);
-        font-size: 0.82rem;
+        font-size: 0.85rem;
+        font-weight: 800;
+        color: var(--primary-dark);
+      }
+      .cm-history-ico {
+        font-size: 1rem;
+      }
+      .cm-history-count {
+        margin-left: auto;
+        background: var(--primary);
+        color: #fff;
+        font-size: 0.72rem;
         font-weight: 700;
-        color: var(--text-muted);
+        min-width: 1.3rem;
+        height: 1.3rem;
+        padding: 0 0.4rem;
+        border-radius: 999px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
       }
       .cm-history-row {
         display: flex;
-        align-items: baseline;
-        gap: 0.5rem;
-        padding: 0.6rem 1rem;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.7rem 1rem;
         border-bottom: 1px solid var(--border);
-        font-size: 0.8rem;
+        font-size: 0.82rem;
+        transition: background 0.15s;
+      }
+      .cm-history-row:hover {
+        background: var(--bg);
       }
       .cm-history-row:last-child {
         border-bottom: none;
       }
+      .cm-history-main {
+        flex: 1;
+        min-width: 0;
+      }
       .cm-history-date {
         color: var(--text-muted);
+        font-size: 0.72rem;
         white-space: nowrap;
-        flex-shrink: 0;
+        margin-top: 0.15rem;
       }
       .cm-history-items {
-        flex: 1;
         color: var(--text);
+        font-weight: 600;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
       }
       .cm-history-total {
-        font-weight: 700;
-        color: var(--text);
+        font-weight: 800;
+        color: var(--primary);
         white-space: nowrap;
+        background: var(--primary-light);
+        padding: 0.3rem 0.6rem;
+        border-radius: 999px;
+        font-size: 0.8rem;
       }
 
       /* Cart Footer */
@@ -1580,10 +1823,10 @@ const CUSTOMER_TOKEN_PREFIX = "ros_cust_token_";
       .cm-cart-btn {
         width: 100%;
         padding: 1rem 1.25rem;
-        background: var(--primary);
+        background: linear-gradient(135deg, var(--primary), var(--primary-dark));
         color: white;
         border: none;
-        border-radius: var(--radius);
+        border-radius: 14px;
         font-size: 0.95rem;
         font-weight: 700;
         cursor: pointer;
@@ -1591,8 +1834,11 @@ const CUSTOMER_TOKEN_PREFIX = "ros_cust_token_";
         display: flex;
         align-items: center;
         justify-content: space-between;
-        box-shadow: 0 4px 20px rgba(232, 84, 47, 0.45);
+        box-shadow: 0 6px 22px rgba(232, 84, 47, 0.45);
         pointer-events: auto;
+      }
+      .cm-cart-btn:not(:disabled):active {
+        transform: scale(0.985);
       }
       .cm-cart-btn:disabled {
         opacity: 0.7;
@@ -1747,20 +1993,25 @@ const CUSTOMER_TOKEN_PREFIX = "ros_cust_token_";
       .cm-modal-overlay {
         position: fixed;
         inset: 0;
-        background: rgba(0, 0, 0, 0.5);
+        background: rgba(17, 24, 39, 0.55);
+        backdrop-filter: blur(3px);
+        -webkit-backdrop-filter: blur(3px);
         z-index: 200;
         display: flex;
         align-items: center;
         justify-content: center;
         padding: 1rem;
+        animation: cmFadeUp 0.2s ease both;
       }
       .cm-modal {
         background: white;
-        border-radius: var(--radius);
+        border-radius: 20px;
         padding: 2rem 1.5rem;
         max-width: 380px;
         width: 100%;
         text-align: center;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.3);
+        animation: cmFadeUp 0.25s ease both;
       }
       .cm-identity-modal {
         text-align: left;
@@ -2046,6 +2297,13 @@ export class CustomerMenuComponent implements OnInit, OnChanges, OnDestroy {
   pastOrders = signal<any[]>([]);
   showPaymentComingSoon = false;
 
+  // Tip
+  showTipModal = signal(false);
+  tipAmount: number | null = null;
+  tipPresets = [20, 50, 100, 200];
+  tipError = signal<string>("");
+  submittingTip = signal(false);
+
   searchControl = new FormControl("");
   searchQuery = signal<string>("");
   searchResults = signal<MenuItem[]>([]);
@@ -2119,11 +2377,56 @@ export class CustomerMenuComponent implements OnInit, OnChanges, OnDestroy {
     return CUSTOMER_TOKEN_PREFIX + this.qrToken;
   }
 
+  private pastOrdersKey(): string {
+    return PAST_ORDERS_PREFIX + this.qrToken;
+  }
+
+  /** Forget the current customer session so the browser is free for a fresh order. */
+  private clearCustomerSession() {
+    if (this.isBrowser) localStorage.removeItem(this.tokenKey());
+    this.customerToken.set(null);
+    this.bill.set(null);
+  }
+
+  /** Persist the "previous orders" list so it survives after the session is cleared. */
+  private persistPastOrders(list: any[]) {
+    if (!this.isBrowser) return;
+    try {
+      localStorage.setItem(this.pastOrdersKey(), JSON.stringify(list || []));
+    } catch {}
+  }
+
+  private loadPersistedPastOrders() {
+    if (!this.isBrowser) return;
+    try {
+      const raw = localStorage.getItem(this.pastOrdersKey());
+      if (!raw) return;
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr) && arr.length) this.pastOrders.set(arr);
+    } catch {}
+  }
+
+  /** Build a compact "previous order" record from a completed bill. */
+  private billToPastEntry(b: any) {
+    const names = new Set<string>();
+    for (const o of b?.orders || []) {
+      for (const it of o.items || []) {
+        if (it.status !== "CANCELLED") names.add(it.name);
+      }
+    }
+    return {
+      date: new Date().toISOString(),
+      items: [...names].slice(0, 5),
+      total: b?.total || 0,
+    };
+  }
+
   ngOnChanges(c: SimpleChanges) {
     if (c["qrToken"] && this.qrToken) this.fetchMenu();
   }
 
   ngOnInit() {
+    this.loadPersistedPastOrders();
     if (this.qrToken && !this.data()) this.fetchMenu();
     this.initSearch();
   }
@@ -2231,7 +2534,14 @@ export class CustomerMenuComponent implements OnInit, OnChanges, OnDestroy {
 
   private subscribeCustomerSocket(customerToken: string) {
     this.sock.joinCustomerRoom(customerToken);
-    this.sock.on<any>("bill:updated").subscribe((b: any) => this.bill.set(b));
+    this.sock.on<any>("bill:updated").subscribe((b: any) => {
+      this.bill.set(b);
+      // Order just got paid — snapshot it as history so it survives a reload.
+      if (b?.paid) {
+        const merged = [this.billToPastEntry(b), ...this.pastOrders()].slice(0, 5);
+        this.persistPastOrders(merged);
+      }
+    });
     this.sock.on<any>("order:updated").subscribe(() => this.refreshBill());
   }
 
@@ -2242,14 +2552,32 @@ export class CustomerMenuComponent implements OnInit, OnChanges, OnDestroy {
 
     this.api.get<any>(`/public/bill/${stored}`).subscribe({
       next: ({ data }) => {
+        // Dining finished (paid) or the table session was closed → free the
+        // browser for a fresh order and keep the completed order as history.
+        const completed = data.paid || data.sessionStatus === "CLOSED";
+        if (completed) {
+          const merged = [
+            this.billToPastEntry(data),
+            ...(data.pastOrders || []),
+          ].slice(0, 5);
+          this.persistPastOrders(merged);
+          this.pastOrders.set(merged);
+          this.clearCustomerSession();
+          return;
+        }
+
         this.customerToken.set(stored);
         this.bill.set(data);
-        if (data.pastOrders?.length) this.pastOrders.set(data.pastOrders);
+        if (data.pastOrders?.length) {
+          this.pastOrders.set(data.pastOrders);
+          this.persistPastOrders(data.pastOrders);
+        }
         this.subscribeCustomerSocket(stored);
       },
       error: () => {
-        if (this.isBrowser) localStorage.removeItem(this.tokenKey());
-        this.customerToken.set(null);
+        // Stale/expired token — drop it but keep showing previous orders.
+        this.clearCustomerSession();
+        this.loadPersistedPastOrders();
       },
     });
   }
@@ -2319,9 +2647,17 @@ export class CustomerMenuComponent implements OnInit, OnChanges, OnDestroy {
         },
         error: (e: any) => {
           this.placing.set(false);
-          alert(
-            e?.error?.message || "Failed to place order. Please try again.",
-          );
+          const msg = e?.error?.message || "";
+          // Stale session (e.g. previous bill was paid / table reopened):
+          // forget it and ask the guest to re-enter their details, keeping the
+          // cart intact so the order goes through on the next try.
+          if (e?.status === 401 || /identity could not be verified/i.test(msg)) {
+            this.clearCustomerSession();
+            this.identityError.set("");
+            this.showIdentityModal.set(true);
+            return;
+          }
+          alert(msg || "Failed to place order. Please try again.");
         },
       });
   }
@@ -2345,6 +2681,42 @@ export class CustomerMenuComponent implements OnInit, OnChanges, OnDestroy {
     if (lines[idx].qty > 1) lines[idx].qty--;
     else lines.splice(idx, 1);
     this.cart.set(lines);
+  }
+
+  openTip() {
+    this.tipError.set("");
+    this.tipAmount = null;
+    this.showTipModal.set(true);
+  }
+
+  closeTip() {
+    this.showTipModal.set(false);
+  }
+
+  submitTip() {
+    this.tipError.set("");
+    const amt = Number(this.tipAmount);
+    if (!amt || amt <= 0) {
+      this.tipError.set("Please enter a valid tip amount");
+      return;
+    }
+    const token = this.customerToken();
+    if (!token) return;
+
+    this.submittingTip.set(true);
+    this.api.post<any>(`/public/tip/${token}`, { amount: amt }).subscribe({
+      next: () => {
+        this.submittingTip.set(false);
+        this.showTipModal.set(false);
+        this.refreshBill();
+      },
+      error: (err: any) => {
+        this.submittingTip.set(false);
+        this.tipError.set(
+          err?.error?.message || "Could not add tip. Please try again.",
+        );
+      },
+    });
   }
 
   refreshBill() {

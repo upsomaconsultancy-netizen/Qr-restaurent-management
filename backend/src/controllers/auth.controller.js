@@ -1,11 +1,11 @@
 const { v4: uuid } = require('uuid');
 const Joi = require('joi');
 const User = require('../models/User');
-const Outlet = require('../models/Outlet');
 const RefreshToken = require('../models/RefreshToken');
 const ApiError = require('../utils/ApiError');
 const { signAccess, signRefresh, verifyRefresh } = require('../utils/jwt');
 const { audit } = require('../utils/audit');
+const { isOutletActive } = require('../utils/outletCache');
 
 const loginSchema = Joi.object({
   email: Joi.string().email().required(),
@@ -40,10 +40,10 @@ exports.login = async (req, res) => {
     throw ApiError.unauthorized('Incorrect email or password. Please check your credentials and try again.');
   }
 
-  // Block login if the outlet assigned to this user (MANAGER/WAITER/KITCHEN) is inactive
+  // Block login if the outlet assigned to this user (MANAGER/WAITER/KITCHEN) is
+  // inactive. Status is served from Redis (short TTL) to keep login off the DB.
   if (['MANAGER', 'WAITER', 'KITCHEN'].includes(user.role) && user.outletId) {
-    const outlet = await Outlet.findOne({ _id: user.outletId, isDeleted: false }).lean();
-    if (!outlet || outlet.status !== 'ACTIVE') {
+    if (!(await isOutletActive(user.outletId))) {
       audit({ req, restaurantId: user.restaurantId, action: 'LOGIN_BLOCKED_OUTLET_INACTIVE', entity: 'User', entityId: user._id });
       throw ApiError.forbidden('Your outlet has been deactivated. Please contact your restaurant administrator.', 'OUTLET_INACTIVE');
     }
@@ -78,8 +78,7 @@ exports.refresh = async (req, res) => {
 
   // Block refresh if the outlet assigned to this user is now inactive
   if (['MANAGER', 'WAITER', 'KITCHEN'].includes(user.role) && user.outletId) {
-    const outlet = await Outlet.findOne({ _id: user.outletId, isDeleted: false }).lean();
-    if (!outlet || outlet.status !== 'ACTIVE') {
+    if (!(await isOutletActive(user.outletId))) {
       stored.revokedAt = new Date();
       await stored.save();
       throw ApiError.forbidden('Your outlet has been deactivated. Please contact your restaurant administrator.', 'OUTLET_INACTIVE');

@@ -5,6 +5,7 @@ const Order = require('../models/Order');
 const User = require('../models/User');
 const ApiError = require('../utils/ApiError');
 const { audit } = require('../utils/audit');
+const { invalidateOutletStatus } = require('../utils/outletCache');
 
 // Helper: total tables used across restaurant + per-outlet allocations
 async function tableAvailability(restaurantId) {
@@ -184,6 +185,7 @@ exports.toggleStatus = async (req, res) => {
 
   outlet.status = outlet.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
   await outlet.save();
+  await invalidateOutletStatus(outlet._id);
 
   audit({ req, restaurantId: req.user.restaurantId, action: 'OUTLET_STATUS_CHANGED', entity: 'Outlet', entityId: outlet._id, meta: { status: outlet.status } });
   res.json({ success: true, data: outlet });
@@ -200,6 +202,7 @@ exports.remove = async (req, res) => {
   outlet.isDeleted = true;
   outlet.status = 'INACTIVE';
   await outlet.save();
+  await invalidateOutletStatus(outlet._id);
 
   audit({ req, restaurantId: req.user.restaurantId, action: 'OUTLET_DELETED', entity: 'Outlet', entityId: outlet._id });
   res.json({ success: true });

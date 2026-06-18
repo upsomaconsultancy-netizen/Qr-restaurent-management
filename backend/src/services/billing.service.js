@@ -1,5 +1,6 @@
 const Order = require('../models/Order');
 const Restaurant = require('../models/Restaurant');
+const Tip = require('../models/Tip');
 
 /** Compute money fields for a single order document (mutates + returns it).
  *  Bill-level taxes are NOT stored here — they are applied once at bill-view time. */
@@ -125,6 +126,11 @@ async function customerBill(customerSessionId) {
   const unpaid = orders.filter((o) => o.paymentStatus === 'UNPAID');
   const isPaid = unpaid.length === 0 && orders.length > 0;
 
+  // Tip is a gratuity tracked separately — never added to total/dueAmount and
+  // never shown on the receipt. Surfaced here only so the customer UI can show
+  // "you tipped ₹X" instead of the Give Tip button.
+  const tipDoc = await Tip.findOne({ customerSessionId }).lean();
+
   return {
     orders,
     subtotal,
@@ -136,7 +142,8 @@ async function customerBill(customerSessionId) {
     dueAmount: round2(unpaid.reduce((s, o) => s + (o.total || 0), 0)),
     paid: isPaid,
     canGenerateReceipt: isPaid,
-    canPay: allServed
+    canPay: allServed,
+    tip: tipDoc ? { amount: tipDoc.amount, waiterName: tipDoc.waiterName } : null
   };
 }
 

@@ -7,6 +7,7 @@ const MenuItem = require('../models/MenuItem');
 const TableSession = require('../models/TableSession');
 const CustomerSession = require('../models/CustomerSession');
 const Order = require('../models/Order');
+const Tip = require('../models/Tip');
 const Counter = require('../models/Counter');
 const ApiError = require('../utils/ApiError');
 const { priceOrder, sessionBill, customerBill } = require('../services/billing.service');
@@ -511,4 +512,74 @@ exports.customerReceipt = async (req, res) => {
       }
     }
   });
+};
+
+/**
+ * POST /api/public/tip/:customerToken
+ * Customer leaves a voluntary tip for the waiter who served their food.
+ * The tip is stored separately from the bill — it is NOT added to the order
+ * total, the payable amount, or the receipt. One tip per customer session
+ * (re-submitting updates the amount).
+ */
+exports.addTip = async (req, res) => {
+  const amount = Math.round(Number(req.body.amount) * 100) / 100;
+  if (!amount || amount <= 0) throw ApiError.badRequest('Please enter a valid tip amount.');
+  if (amount > 100000) throw ApiError.badRequest('Tip amount is too large.');
+
+  const cs = await CustomerSession.findOne({ sessionToken: req.params.customerToken }).lean();
+  if (!cs) throw ApiError.notFound('Session not found. Please rescan the QR code.');
+
+  const orders = await Order.find({
+    customerSessionId: cs._id,
+    isDeleted: false,
+    status: { $ne: 'CANCELLED' }
+  }).lean();
+  if (!orders.length) throw ApiError.badRequest('No orders found to tip for.');
+
+  // Attribute the tip to the waiter who served the customer most recently.
+  let waiter = null;
+  let latestServedAt = 0;
+  const itemNames = new Set();
+  for (const o of orders) {
+    for (const it of o.items) {
+      if (it.status === 'CANCELLED') continue;
+      itemNames.add(it.name);
+      if (it.servedBy && it.servedAt) {
+        const t = new Date(it.servedAt).getTime();
+        if (t >= latestServedAt) {
+          latestServedAt = t;
+          waiter = { id: it.servedBy, name: it.servedByName, email: it.servedByEmail };
+        }
+      }
+    }
+  }
+  if (!waiter) throw ApiError.conflict('You can add a tip once your food has been served.');
+
+  const tip = await Tip.findOneAndUpdate(
+    { customerSessionId: cs._id },
+    {
+      restaurantId: cs.restaurantId,
+      outletId: cs.outletId,
+      sessionId: cs.sessionId,
+      tableId: cs.tableId,
+      customerSessionId: cs._id,
+      customerName: cs.customerName,
+      customerPhone: cs.mobileNumber,
+      amount,
+      waiterId: waiter.id,
+      waiterName: waiter.name,
+      waiterEmail: waiter.email,
+      items: [...itemNames].slice(0, 20),
+      orderIds: orders.map((o) => o._id)
+    },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  );
+
+  res.status(201).json({ success: true, data: { tip: { amount: tip.amount, waiterName: tip.waiterName } } });
+
+  // Notify the waiter + owner/manager dashboards, and refresh the customer bill.
+  emitToOutlet(cs.restaurantId.toString(), cs.outletId.toString(), 'tip:new', tip);
+  customerBill(cs._id)
+    .then((bill) => emitToCustomer(cs.sessionToken, 'bill:updated', bill))
+    .catch(() => {});
 };

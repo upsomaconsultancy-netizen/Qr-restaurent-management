@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, inject, signal, effect } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, signal, effect, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../core/services/api.service';
@@ -92,6 +92,10 @@ Chart.register(...registerables);
               <line x1="3" y1="18" x2="3.01" y2="18"/>
             </svg>
             Menu
+          </button>
+          <button class="nav-tab" [class.active]="activeTab() === 'tips'" (click)="activeTab.set('tips'); loadTips()">
+            💝 Tips
+            <span class="nav-pill" *ngIf="tipsTotal() > 0">₹{{ tipsTotal() | number:'1.0-0' }}</span>
           </button>
           <button *ngIf="isManager()" class="nav-tab" [class.active]="activeTab() === 'staff'" (click)="activeTab.set('staff')">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -524,6 +528,59 @@ Chart.register(...registerables);
         <!-- ════════ STAFF TAB ════════ -->
         @if (activeTab() === 'staff') {
           <app-staff-management></app-staff-management>
+        }
+
+        <!-- ════════ TIPS TAB ════════ -->
+        @if (activeTab() === 'tips') {
+          <div class="tips-view">
+            <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px;margin-bottom:16px;">
+              <div>
+                <h2 style="font-size:18px;font-weight:700;margin:0;">💝 Tips</h2>
+                <p style="font-size:13px;color:#6b7280;margin:4px 0 0;">
+                  {{ isManager() ? 'Tips received by your staff' : 'Tips your customers gave you' }}
+                </p>
+              </div>
+              <div style="background:#fdf2f8;border:1px solid #fbcfe8;border-radius:12px;padding:10px 18px;text-align:right;">
+                <div style="font-size:11px;color:#be185d;font-weight:600;text-transform:uppercase;letter-spacing:.3px;">Total Tips</div>
+                <div style="font-size:20px;font-weight:800;color:#be185d;">₹{{ tipsTotal() | number:'1.2-2' }}</div>
+              </div>
+            </div>
+
+            @if (tipsLoading()) {
+              <div style="text-align:center;color:#9ca3af;padding:40px;">Loading…</div>
+            } @else if (!tips().length) {
+              <div style="text-align:center;color:#9ca3af;padding:40px;">No tips yet.</div>
+            } @else {
+              <div style="overflow-x:auto;background:#fff;border:1px solid #e5e7eb;border-radius:12px;">
+                <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                  <thead>
+                    <tr style="background:#f9fafb;text-align:left;color:#6b7280;">
+                      <th style="padding:10px 14px;font-weight:600;">Date</th>
+                      <th style="padding:10px 14px;font-weight:600;">Time</th>
+                      <th style="padding:10px 14px;font-weight:600;">Customer</th>
+                      <th style="padding:10px 14px;font-weight:600;">Mobile</th>
+                      <th style="padding:10px 14px;font-weight:600;">Items</th>
+                      @if (isManager()) { <th style="padding:10px 14px;font-weight:600;">Waiter</th> }
+                      <th style="padding:10px 14px;font-weight:600;text-align:right;">Tip</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (t of tips(); track t._id) {
+                      <tr style="border-top:1px solid #f3f4f6;">
+                        <td style="padding:10px 14px;white-space:nowrap;">{{ t.createdAt | date:'dd MMM yyyy' }}</td>
+                        <td style="padding:10px 14px;white-space:nowrap;color:#6b7280;">{{ t.createdAt | date:'hh:mm a' }}</td>
+                        <td style="padding:10px 14px;font-weight:600;">{{ t.customerName }}</td>
+                        <td style="padding:10px 14px;color:#6b7280;">{{ t.customerPhone }}</td>
+                        <td style="padding:10px 14px;color:#6b7280;max-width:260px;">{{ (t.items || []).join(', ') }}</td>
+                        @if (isManager()) { <td style="padding:10px 14px;">{{ t.waiterName || '—' }}</td> }
+                        <td style="padding:10px 14px;text-align:right;font-weight:700;color:#be185d;white-space:nowrap;">₹{{ t.amount | number:'1.2-2' }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
+          </div>
         }
 
         <!-- ════════ FAVORITES TAB ════════ -->
@@ -1621,8 +1678,13 @@ export class DashboardComponent implements OnInit, OnDestroy {
   peakDays  = signal<any[]>([]);
   error     = signal<string | null>(null);
   activeOrdersCount = signal<number>(0);
-  activeTab = signal<'orders'|'tables'|'menu'|'staff'|'favorites'|'outlets'>('orders');
+  activeTab = signal<'orders'|'tables'|'menu'|'staff'|'favorites'|'outlets'|'tips'>('orders');
   selectedPeriod = 'day';
+
+  // Tips
+  tips        = signal<any[]>([]);
+  tipsLoading = signal(false);
+  tipsTotal   = computed(() => this.tips().reduce((s, t) => s + (t.amount || 0), 0));
 
   // Outlet state (for OWNER/MANAGER)
   outlets         = signal<Outlet[]>([]);
@@ -1751,6 +1813,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.sock.on<any>('order:ready_to_serve').subscribe(notification => {
       this.pendingServiceOrders.update(list => [notification, ...list]);
     });
+    // New tip from a customer — refresh the tips table + nav pill total
+    this.sock.on('tip:new').subscribe(() => this.loadTips());
+    this.loadTips();
     this.timer = setInterval(() => {
       this.loadOrders();
       if (this.isManager()) { this.loadSales(); this.loadItems(); this.loadTime(); }
@@ -1933,6 +1998,18 @@ export class DashboardComponent implements OnInit, OnDestroy {
         this.loadOrders();
       },
       error: (e: any) => this.error.set(e?.error?.message || 'Failed to mark as served')
+    });
+  }
+
+  // ── Tips ────────────────────────────────────────────
+  loadTips() {
+    this.tipsLoading.set(true);
+    this.api.get<any>('/tenant/tips').subscribe({
+      next: ({ data }) => {
+        this.tips.set(data?.tips || []);
+        this.tipsLoading.set(false);
+      },
+      error: () => this.tipsLoading.set(false)
     });
   }
 

@@ -11,6 +11,7 @@ const orders = require('../controllers/order.controller');
 const analytics = require('../controllers/analytics.controller');
 const customerAnalytics = require('../controllers/customerAnalytics.controller');
 const staff = require('../controllers/staff.controller');
+const tips = require('../controllers/tip.controller');
 const inventory = require('../controllers/inventory.controller');
 const outlet = require('../controllers/outlet.controller');
 const uploads = require('../controllers/upload.controller');
@@ -77,6 +78,9 @@ router.patch('/restaurant/profile', permit('OWNER', 'MANAGER'), asyncH(require('
 router.patch('/restaurant/logo', permit('OWNER'), asyncH(require('../controllers/restaurant.controller').updateLogoUrl));
 router.patch('/restaurant/bill-taxes', permit('OWNER'), asyncH(require('../controllers/restaurant.controller').updateBillTaxes));
 router.delete('/restaurant/bill-taxes/:taxId', permit('OWNER'), asyncH(require('../controllers/restaurant.controller').deleteBillTax));
+
+// Tips (WAITER sees own; OWNER/MANAGER see all staff tips)
+router.get('/tips', permit('OWNER', 'MANAGER', 'WAITER'), asyncH(tips.list));
 
 // Staff management
 router.get('/staff', permit('OWNER', 'MANAGER'), asyncH(staff.list));

@@ -30,6 +30,7 @@ import { RouterLink } from '@angular/router';
           <a routerLink="/" fragment="marketing" (click)="open.set(false)">Marketing</a>
           <a routerLink="/" fragment="how" (click)="open.set(false)">How it works</a>
           <a routerLink="/" fragment="pricing" (click)="open.set(false)">Pricing</a>
+          <a routerLink="/" fragment="referral" (click)="open.set(false)">Partner</a>
           <a routerLink="/" fragment="faq" (click)="open.set(false)">FAQ</a>
           <a routerLink="/" fragment="contact" (click)="open.set(false)">Contact</a>
           <a routerLink="/login" class="mk-login-btn" (click)="open.set(false)">Login</a>

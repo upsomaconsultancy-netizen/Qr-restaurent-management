@@ -10,6 +10,7 @@ router.get('/qr/:qrToken',                  asyncH(ctrl.resolveQr));
 router.post('/customer-session',            publicOrderLimiter, asyncH(ctrl.createCustomerSession));
 router.post('/orders',                      publicOrderLimiter, asyncH(ctrl.placeOrder));
 router.get('/bill/:customerToken',          asyncH(ctrl.myBill));
+router.post('/tip/:customerToken',          publicOrderLimiter, asyncH(ctrl.addTip));
 router.get('/receipt/:customerToken',       asyncH(ctrl.customerReceipt));
 
 // Marketing landing — "Book a Demo" lead capture (no login)
