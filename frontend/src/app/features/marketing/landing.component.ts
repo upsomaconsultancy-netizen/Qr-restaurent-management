@@ -385,7 +385,7 @@ interface Faq { q: string; a: string; }
     .lp-hero-copy .lp-hero-cta { animation-delay: .3s; }
     .lp-hero-copy .lp-social { animation-delay: .4s; }
     .lp-eyebrow {
-      display: inline-flex; align-items: center; gap: .45rem; background: #fdeae3; color: #c0431f;
+      display: inline-flex; align-items: center; gap: .45rem; background: #fdeae3; color: #b83a1a;
       font-weight: 600; font-size: .82rem; padding: .4rem .9rem; border-radius: 999px; margin-bottom: 1.1rem;
     }
     .lp-hero-copy h1 { font-size: clamp(2.1rem, 4.4vw, 3.4rem); line-height: 1.1; margin: 0 0 1.1rem; }
@@ -404,7 +404,7 @@ interface Faq { q: string; a: string; }
     .lp-avatars span:first-child { margin-left: 0; background: linear-gradient(135deg, #9ad9cf, #1d9a8a); }
     .lp-avatars span:nth-child(3) { background: linear-gradient(135deg, #a9c7ff, #2563eb); }
     .lp-social-txt strong { display: block; font-size: .92rem; }
-    .lp-social-txt span { font-size: .8rem; color: #8a8d94; }
+    .lp-social-txt span { font-size: .8rem; color: #65686f; }
     .lp-rating { display: flex; flex-direction: column; }
     .lp-stars, .lp-float-stars { color: #f5a623; font-size: .82rem; }
     .lp-rating > span { font-size: .8rem; color: #5a5d64; font-weight: 600; }
@@ -465,14 +465,14 @@ interface Faq { q: string; a: string; }
       color: #14543a; font-size: .92rem; line-height: 1.55;
     }
     .lp-sig-card-msg .fa-whatsapp { color: #25d366; margin-right: .25rem; }
-    .lp-sig-card-sent { color: #8a8d94; font-size: .78rem; text-align: right; margin-top: .5rem; }
+    .lp-sig-card-sent { color: #65686f; font-size: .78rem; text-align: right; margin-top: .5rem; }
 
     /* Sections */
     .lp-section { max-width: 1180px; margin: 0 auto; padding: 4.5rem 1.25rem; }
     .lp-section-alt { max-width: none; background: #f3efe9; }
     .lp-section-alt > * { max-width: 1180px; margin-left: auto; margin-right: auto; }
     .lp-head { text-align: center; max-width: 640px; margin: 0 auto 2.75rem; }
-    .lp-kicker { text-transform: uppercase; letter-spacing: .08em; font-size: .78rem; font-weight: 700; color: #e8542f; }
+    .lp-kicker { text-transform: uppercase; letter-spacing: .08em; font-size: .78rem; font-weight: 700; color: #b83a1a; }
     .lp-kicker.light { color: #ffd9cb; }
     .lp-head h2 { font-size: clamp(1.7rem, 3.2vw, 2.4rem); margin: .5rem 0 .6rem; }
     .lp-head p { color: #5a5d64; font-size: 1.02rem; line-height: 1.6; margin: 0; }
@@ -542,7 +542,7 @@ interface Faq { q: string; a: string; }
     .lp-price-card h3 { font-size: 1.15rem; margin: 0 0 .5rem; }
     .lp-price-amt { font-family: 'Sora', sans-serif; font-size: 2.4rem; font-weight: 700; line-height: 1; }
     .lp-price-amt .cur { font-size: 1.2rem; vertical-align: super; }
-    .lp-price-amt .per { font-size: .9rem; color: #8a8d94; font-weight: 500; white-space: nowrap; }
+    .lp-price-amt .per { font-size: .9rem; color: #65686f; font-weight: 500; white-space: nowrap; }
     .lp-price-sub { color: #5a5d64; font-size: .9rem; margin: .5rem 0 1.1rem; }
     .lp-price-card ul { list-style: none; padding: 0; margin: 0 0 1.5rem; display: grid; gap: .55rem; flex: 1; }
     .lp-price-card li { font-size: .92rem; color: #2c2f36; display: flex; align-items: flex-start; gap: .5rem; }
@@ -597,7 +597,7 @@ interface Faq { q: string; a: string; }
     .lp-field { display: block; margin-bottom: .9rem; }
     .lp-field > span { display: block; font-size: .86rem; font-weight: 600; margin-bottom: .35rem; color: #2c2f36; }
     .lp-field > span i { color: #e8542f; font-style: normal; }
-    .lp-field > span small { color: #8a8d94; font-weight: 500; }
+    .lp-field > span small { color: #65686f; font-weight: 500; }
     .lp-field input, .lp-field textarea {
       width: 100%; padding: .7rem .85rem; border: 1px solid #e3dcd3; border-radius: 10px;
       font-size: .95rem; font-family: inherit; color: #16181d; transition: border-color .15s, box-shadow .15s;
@@ -608,7 +608,7 @@ interface Faq { q: string; a: string; }
     .lp-form-msg { padding: .7rem .85rem; border-radius: 10px; font-size: .88rem; margin-bottom: .9rem; }
     .lp-form-msg.ok { background: #e7f6ee; color: #136a43; }
     .lp-form-msg.err { background: #fde7e7; color: #a31515; }
-    .lp-form-fine { font-size: .78rem; color: #8a8d94; margin: .8rem 0 0; text-align: center; }
+    .lp-form-fine { font-size: .78rem; color: #65686f; margin: .8rem 0 0; text-align: center; }
     .lp-form-fine a { color: #e8542f; text-decoration: none; }
 
     /* ── Responsive ── */
@@ -765,7 +765,7 @@ export class LandingComponent implements OnInit, AfterViewInit {
       description: 'All-in-one restaurant platform for QR ordering, kitchen display, billing, self-serve receipts, ratings and guest marketing.',
       contactPoint: {
         '@type': 'ContactPoint', contactType: 'sales',
-        email: 'hello@upsomarestro.com', telephone: '+91-90000-00000', areaServed: 'IN',
+        email: 'upsomaconsultancy@gmail.com', telephone: '+91-91368-18545', areaServed: 'IN',
       },
     });
 

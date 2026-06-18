@@ -38,8 +38,8 @@ import { RouterLink } from '@angular/router';
 
         <div class="mk-foot-col">
           <h4>Contact</h4>
-          <a href="mailto:hello@upsomarestro.com">hello&#64;upsomarestro.com</a>
-          <a href="tel:+919000000000">+91 90000 00000</a>
+          <a href="mailto:upsomaconsultancy@gmail.com">upsomaconsultancy&#64;gmail.com</a>
+          <a href="tel:+919136818545">+91 91368 18545</a>
           <span class="mk-foot-addr">India</span>
         </div>
       </div>

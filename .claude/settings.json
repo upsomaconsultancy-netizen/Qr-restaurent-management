@@ -6,7 +6,10 @@
       "Bash(cd \"/e/Restaurent-qrmanage/restaurant-os/frontend\" && cat package.json | grep -A5 '\"scripts\"')",
       "Read(//e/e/Restaurent-qrmanage/restaurant-os/frontend/**)",
       "Bash(npx ng *)",
-      "Bash(cd \"/e/Restaurent-qrmanage/restaurant-os/frontend\" && rm -rf dist)"
+      "Bash(cd \"/e/Restaurent-qrmanage/restaurant-os/frontend\" && rm -rf dist)",
+      "Skill(schedule)",
+      "Skill(schedule:*)",
+      "PowerShell(Add-Type -AssemblyName System.Drawing; $img = [System.Drawing.Image]::FromFile\\(\\(Resolve-Path \"e:\\\\Restaurent-qrmanage\\\\restaurant-os\\\\frontend\\\\public\\\\qr1.webp\"\\).Path\\); \"$\\($img.Width\\)x$\\($img.Height\\)\")"
     ],
     "additionalDirectories": [
       "e:\\e\\Restaurent-qrmanage\\restaurant-os\\frontend"

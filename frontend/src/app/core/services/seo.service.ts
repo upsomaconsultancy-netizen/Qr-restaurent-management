@@ -14,8 +14,7 @@ export interface SeoConfig {
 
 /** Public site origin — used to build canonical + OG URLs. */
 const SITE_ORIGIN = 'https://upsomarestro.com';
-const DEFAULT_IMAGE =
-  'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1200&q=70';
+const DEFAULT_IMAGE = SITE_ORIGIN + '/qr3.png';
 
 /**
  * Centralised, SSR-safe SEO/AEO/GEO metadata manager.

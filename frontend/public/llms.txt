@@ -1,0 +1,16 @@
+# Upsoma Restro
+
+> All-in-one restaurant platform: QR self-ordering, real-time kitchen display, billing, self-serve receipts, ratings, multi-outlet analytics and guest re-engagement marketing over WhatsApp, RCS and SMS. 10-day free trial, billed per table.
+
+Upsoma Restro turns every order into a marketing lead: it captures the guest's name, mobile number, items and bill amount, then helps restaurants win them back with targeted local offers.
+
+## Docs
+
+- [Home](https://upsomarestro.com/): Product overview, features, pricing and demo booking.
+- [Privacy Policy](https://upsomarestro.com/privacy-policy): How guest and restaurant data is collected, used and protected.
+- [Terms & Conditions](https://upsomarestro.com/terms): Terms governing use of the platform, trial and per-table pricing.
+
+## Contact
+
+- Email: upsomaconsultancy@gmail.com
+- Phone: +91 91368 18545

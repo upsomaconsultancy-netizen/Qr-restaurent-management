@@ -80,7 +80,7 @@ import { MarketingLegalComponent } from './marketing-legal.component';
       <h2>10. Contact</h2>
       <p>
         For any questions about these Terms, email
-        <a href="mailto:hello@upsomarestro.com">hello&#64;upsomarestro.com</a>.
+        <a href="mailto:upsomaconsultancy@gmail.com">upsomaconsultancy&#64;gmail.com</a>.
       </p>
     </mkt-legal>
   `

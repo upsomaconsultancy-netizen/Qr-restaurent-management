@@ -60,7 +60,7 @@ import { MarketingLegalComponent } from './marketing-legal.component';
       <p>
         Depending on your jurisdiction, you may have the right to access, correct, or delete your
         personal data. To exercise these rights, contact us at
-        <a href="mailto:hello@upsomarestro.com">hello&#64;upsomarestro.com</a>.
+        <a href="mailto:upsomaconsultancy@gmail.com">upsomaconsultancy&#64;gmail.com</a>.
       </p>
 
       <h2>7. Changes to this policy</h2>
@@ -72,7 +72,7 @@ import { MarketingLegalComponent } from './marketing-legal.component';
       <h2>8. Contact</h2>
       <p>
         Questions about this policy? Email
-        <a href="mailto:hello@upsomarestro.com">hello&#64;upsomarestro.com</a>.
+        <a href="mailto:upsomaconsultancy@gmail.com">upsomaconsultancy&#64;gmail.com</a>.
       </p>
     </mkt-legal>
   `
