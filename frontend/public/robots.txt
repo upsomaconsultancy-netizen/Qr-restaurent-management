@@ -33,4 +33,4 @@ Allow: /
 User-agent: Bingbot
 Allow: /
 
-Sitemap: https://upsomarestro.com/sitemap.xml
+Sitemap: https://upsoma.in/sitemap.xml

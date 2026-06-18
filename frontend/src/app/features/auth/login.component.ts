@@ -221,7 +221,7 @@ import { AuthService } from '../../core/services/auth.service';
       type="email"
       [(ngModel)]="email"
       name="email"
-      placeholder="you@upsoma.com"
+      placeholder="you@upsoma.in"
       required
       email
       autocomplete="username"

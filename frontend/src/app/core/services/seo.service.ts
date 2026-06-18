@@ -13,7 +13,7 @@ export interface SeoConfig {
 }
 
 /** Public site origin — used to build canonical + OG URLs. */
-const SITE_ORIGIN = 'https://upsomarestro.com';
+const SITE_ORIGIN = 'https://upsoma.in';
 const DEFAULT_IMAGE = SITE_ORIGIN + '/qr3.png';
 
 /**

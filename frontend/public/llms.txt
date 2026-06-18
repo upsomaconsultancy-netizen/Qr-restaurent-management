@@ -6,9 +6,9 @@ Upsoma Restro turns every order into a marketing lead: it captures the guest's n
 
 ## Docs
 
-- [Home](https://upsomarestro.com/): Product overview, features, pricing and demo booking.
-- [Privacy Policy](https://upsomarestro.com/privacy-policy): How guest and restaurant data is collected, used and protected.
-- [Terms & Conditions](https://upsomarestro.com/terms): Terms governing use of the platform, trial and per-table pricing.
+- [Home](https://upsoma.in/): Product overview, features, pricing and demo booking.
+- [Privacy Policy](https://upsoma.in/privacy-policy): How guest and restaurant data is collected, used and protected.
+- [Terms & Conditions](https://upsoma.in/terms): Terms governing use of the platform, trial and per-table pricing.
 
 ## Contact
 
