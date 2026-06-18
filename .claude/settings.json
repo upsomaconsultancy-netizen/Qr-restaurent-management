@@ -9,7 +9,8 @@
       "Bash(cd \"/e/Restaurent-qrmanage/restaurant-os/frontend\" && rm -rf dist)",
       "Skill(schedule)",
       "Skill(schedule:*)",
-      "PowerShell(Add-Type -AssemblyName System.Drawing; $img = [System.Drawing.Image]::FromFile\\(\\(Resolve-Path \"e:\\\\Restaurent-qrmanage\\\\restaurant-os\\\\frontend\\\\public\\\\qr1.webp\"\\).Path\\); \"$\\($img.Width\\)x$\\($img.Height\\)\")"
+      "PowerShell(Add-Type -AssemblyName System.Drawing; $img = [System.Drawing.Image]::FromFile\\(\\(Resolve-Path \"e:\\\\Restaurent-qrmanage\\\\restaurant-os\\\\frontend\\\\public\\\\qr1.webp\"\\).Path\\); \"$\\($img.Width\\)x$\\($img.Height\\)\")",
+      "WebFetch(domain:upsoma.in)"
     ],
     "additionalDirectories": [
       "e:\\e\\Restaurent-qrmanage\\restaurant-os\\frontend"
