@@ -743,6 +743,10 @@ export class LandingComponent implements OnInit, AfterViewInit {
     { icon: 'fa-chart-line', bg: '#e3f6ff', fg: '#0e6f9a', title: 'Powerful Analytics', desc: 'Sales trends, peak hours, best & worst sellers and staff performance at a glance.' },
     { icon: 'fa-store', bg: '#ffe3ee', fg: '#bf2f6a', title: 'Multi-Outlet Ready', desc: 'Manage many branches under one account with per-outlet menus and consolidated reports.' },
     { icon: 'fa-bullhorn', bg: '#e7f6ee', fg: '#1d7a4f', title: 'Guest Marketing Leads', desc: 'Every order saves the guest as a lead so you can win them back via WhatsApp, RCS or SMS.' },
+    { icon: 'fa-shuffle', bg: '#e3edff', fg: '#1b4ea8', title: 'Smart Order Workflow', desc: 'No kitchen staff? Orders skip the kitchen so owner & waiter serve directly. Add a chef and the kitchen flow turns on automatically — per outlet.' },
+    { icon: 'fa-bell', bg: '#fff3d6', fg: '#9a6b00', title: 'Instant Waiter Alerts', desc: 'The moment an order is ready, the waiter gets a pop-up with full details and a ringing alert — no order is ever missed.' },
+    { icon: 'fa-tags', bg: '#ffe3ee', fg: '#bf2f6a', title: 'Customer Discounts', desc: 'Assign percentage or flat discounts to loyal customers by mobile number — they apply automatically on every future order and show on the bill.' },
+    { icon: 'fa-moon', bg: '#efe3ff', fg: '#6a3bbf', title: 'Dark Mode & Working Mode', desc: 'A polished SaaS dashboard with instant dark/light themes and a focused Working Mode that shows only live orders during the rush.' },
   ];
 
   steps = [

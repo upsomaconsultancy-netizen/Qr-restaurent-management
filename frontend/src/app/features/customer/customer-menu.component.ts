@@ -47,6 +47,9 @@ const PAST_ORDERS_PREFIX = "ros_cust_past_";
   standalone: true,
   imports: [CommonModule, DecimalPipe, FormsModule, ReactiveFormsModule],
   template: `
+    @if (discountBanner()) {
+      <div class="cm-discount-toast">{{ discountBanner() }}</div>
+    }
     @if (loading()) {
     } @else if (tableFull()) {
       <div class="cm-page cm-error-page">
@@ -446,6 +449,12 @@ const PAST_ORDERS_PREFIX = "ros_cust_past_";
                       }
                     }
                   }
+                  @if (b.discountAmount > 0) {
+                    <div class="cm-bill-row cm-bill-discount">
+                      <span>🎉 Discount{{ b.discounts?.[0]?.name ? ' (' + b.discounts[0].name + ')' : '' }}</span>
+                      <span>− ₹{{ b.discountAmount }}</span>
+                    </div>
+                  }
                   <div class="cm-bill-row cm-bill-grand">
                     <span>Total</span><span>₹{{ b.total }}</span>
                   </div>
@@ -830,6 +839,18 @@ const PAST_ORDERS_PREFIX = "ros_cust_past_";
                       </div>
                     }
                   }
+                }
+                @if (receipt()!.summary.discountAmount > 0) {
+                  <div class="rcpt-total-row rcpt-discount-row">
+                    <span
+                      >Discount{{ receipt()!.summary.discounts?.[0]?.name ? ' (' + receipt()!.summary.discounts[0].name + ')' : '' }}</span
+                    >
+                    <span
+                      >&#8722;&#8377;{{
+                        receipt()!.summary.discountAmount | number: "1.2-2"
+                      }}</span
+                    >
+                  </div>
                 }
                 @if (receipt()!.summary.serviceCharge) {
                   <div class="rcpt-total-row rcpt-tax-row">
@@ -1614,6 +1635,31 @@ const PAST_ORDERS_PREFIX = "ros_cust_past_";
         color: #dc2626;
         font-weight: 700;
       }
+      .cm-bill-discount {
+        color: #059669;
+        font-weight: 700;
+      }
+      .cm-discount-toast {
+        position: fixed;
+        top: 14px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 4000;
+        background: linear-gradient(135deg, #10b981, #059669);
+        color: #fff;
+        font-weight: 700;
+        font-size: 0.9rem;
+        padding: 0.7rem 1.25rem;
+        border-radius: 999px;
+        box-shadow: 0 8px 24px rgba(5, 150, 105, 0.35);
+        animation: cmDiscPop 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        max-width: 92vw;
+        text-align: center;
+      }
+      @keyframes cmDiscPop {
+        from { transform: translate(-50%, -16px); opacity: 0; }
+        to { transform: translate(-50%, 0); opacity: 1; }
+      }
       .cm-paid-banner {
         background: linear-gradient(135deg, #d1fae5, #ecfdf5);
         color: #065f46;
@@ -2308,6 +2354,10 @@ export class CustomerMenuComponent implements OnInit, OnChanges, OnDestroy {
   searchQuery = signal<string>("");
   searchResults = signal<MenuItem[]>([]);
 
+  // Celebratory discount banner shown after placing an order that earned a discount.
+  discountBanner = signal<string>("");
+  private discountBannerTimer: any;
+
   custName = "";
   custMobile = "";
 
@@ -2641,9 +2691,10 @@ export class CustomerMenuComponent implements OnInit, OnChanges, OnDestroy {
         items: this.cart().map((l) => ({ menuItemId: l.item._id, qty: l.qty })),
       })
       .subscribe({
-        next: () => {
+        next: (res: any) => {
           this.cart.set([]);
           this.placing.set(false);
+          this.showDiscountBanner(res?.data?.order?.discount);
         },
         error: (e: any) => {
           this.placing.set(false);
@@ -2660,6 +2711,17 @@ export class CustomerMenuComponent implements OnInit, OnChanges, OnDestroy {
           alert(msg || "Failed to place order. Please try again.");
         },
       });
+  }
+
+  /** Show the "🎉 You received …" message for a discount applied to the order. */
+  private showDiscountBanner(discount: any) {
+    if (!discount || !(discount.amount > 0)) return;
+    const msg = discount.type === "PERCENTAGE"
+      ? `🎉 You received ${discount.value}% discount (₹${discount.amount} off)`
+      : `🎉 You received ₹${discount.amount} discount`;
+    this.discountBanner.set(msg);
+    clearTimeout(this.discountBannerTimer);
+    this.discountBannerTimer = setTimeout(() => this.discountBanner.set(""), 6000);
   }
 
   getQty(item: MenuItem): number {
@@ -2777,6 +2839,11 @@ export class CustomerMenuComponent implements OnInit, OnChanges, OnDestroy {
       ? `<div style="display:flex;justify-content:space-between;font-size:11px;padding:.15rem 0;color:#555;"><span>Service Charge (${r.summary.serviceChargePercent}%)</span><span>&#8377;${(+r.summary.serviceCharge).toFixed(2)}</span></div>`
       : "";
 
+    const d0 = r.summary?.discounts?.[0];
+    const discountLine = (r.summary?.discountAmount || 0) > 0
+      ? `<div style="display:flex;justify-content:space-between;font-size:11px;padding:.15rem 0;color:#059669;font-weight:600;"><span>Discount${d0?.name ? ` (${d0.name})` : ""}${d0 ? ` &middot; ${d0.type === "PERCENTAGE" ? d0.value + "%" : "&#8377;" + d0.value}` : ""}</span><span>&#8722;&#8377;${(+r.summary.discountAmount).toFixed(2)}</span></div>`
+      : "";
+
     const logo = r.restaurant?.logoUrl
       ? `<img src="${r.restaurant.logoUrl}" style="width:64px;height:64px;object-fit:contain;border-radius:8px;margin-bottom:.5rem;">`
       : "";
@@ -2823,6 +2890,7 @@ export class CustomerMenuComponent implements OnInit, OnChanges, OnDestroy {
         <div class="row"><span>Subtotal</span><span>&#8377;${(+(r.summary?.subtotal || 0)).toFixed(2)}</span></div>
         ${taxes}
         ${billTaxes}
+        ${discountLine}
         ${serviceChargeLine}
         <div style="color:#999;margin:.4rem 0;overflow:hidden;">───────────────────────────────────</div>
         <div class="row grand"><span>GRAND TOTAL</span><span>&#8377;${(+(r.summary?.grandTotal || 0)).toFixed(2)}</span></div>

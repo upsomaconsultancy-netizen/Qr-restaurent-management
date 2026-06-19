@@ -10,7 +10,17 @@
       "Skill(schedule)",
       "Skill(schedule:*)",
       "PowerShell(Add-Type -AssemblyName System.Drawing; $img = [System.Drawing.Image]::FromFile\\(\\(Resolve-Path \"e:\\\\Restaurent-qrmanage\\\\restaurant-os\\\\frontend\\\\public\\\\qr1.webp\"\\).Path\\); \"$\\($img.Width\\)x$\\($img.Height\\)\")",
-      "WebFetch(domain:upsoma.in)"
+      "WebFetch(domain:upsoma.in)",
+      "Bash(node -c src/controllers/analytics.controller.js)",
+      "Bash(node -c src/controllers/order.controller.js)",
+      "Bash(node -c src/controllers/staff.controller.js)",
+      "Bash(node -c src/utils/kitchenStaff.js)",
+      "Bash(node -e ' *)",
+      "Bash(node -e \"try { require\\('./src/routes/tenant.routes'\\); require\\('./src/controllers/public.controller'\\); console.log\\('routes + public load OK'\\); } catch\\(e\\){ console.error\\('ERR:', e.message\\); process.exit\\(1\\);} \")",
+      "Bash(node -e \"require\\('./src/routes/tenant.routes'\\); require\\('./src/controllers/public.controller'\\); console.log\\('LOAD_OK'\\);\")",
+      "Bash(timeout 5 node -e \"require\\('./src/routes/tenant.routes'\\); require\\('./src/controllers/public.controller'\\); console.log\\('LOAD_OK'\\); process.exit\\(0\\);\")",
+      "Bash(node -c src/controllers/discount.controller.js)",
+      "Bash(node -c src/models/Discount.js)"
     ],
     "additionalDirectories": [
       "e:\\e\\Restaurent-qrmanage\\restaurant-os\\frontend"

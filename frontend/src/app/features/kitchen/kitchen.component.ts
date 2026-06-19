@@ -3,6 +3,7 @@ import { CommonModule, DatePipe } from '@angular/common';
 import { ApiService } from '../../core/services/api.service';
 import { SocketService } from '../../core/services/socket.service';
 import { AuthService } from '../../core/services/auth.service';
+import { ThemeService } from '../../core/services/theme.service';
 
 // Kitchen flow ends at DONE — waiter marks WAITING_FOR_SERVICE → SERVED
 const KITCHEN_FLOW = ['PENDING', 'ACCEPTED', 'PREPARING', 'DONE'] as const;
@@ -66,7 +67,19 @@ const STATUS_CFG: Record<string, { bg: string; text: string; label: string }> = 
                 </button>
               }
             </div>
-            <button class="kd-logout-btn" (click)="auth.logout()">
+            <button class="kd-icon-btn" (click)="theme.toggle()" [attr.aria-label]="theme.theme() === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'" title="Toggle theme">
+              @if (theme.theme() === 'dark') {
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="5"/>
+                  <path d="M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/>
+                </svg>
+              } @else {
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                </svg>
+              }
+            </button>
+            <button class="kd-icon-btn" (click)="auth.logout()" aria-label="Sign out" title="Sign out">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
                 <polyline points="16 17 21 12 16 7"/>
@@ -294,14 +307,17 @@ const STATUS_CFG: Record<string, { bg: string; text: string; label: string }> = 
     }
   `,
   styles: [`
+    /* Dark theme (default for kitchen — high-contrast for busy line cooks) */
     :host {
       --bg: #0f172a;
+      --header-bg: #0a1628;
       --card: #1e293b;
       --card-hover: #243044;
       --border: #334155;
       --border-soft: #2a3a50;
       --text: #f1f5f9;
       --muted: #94a3b8;
+      --soft-fill: rgba(255,255,255,.04);
       --accent: #f97316;
       --accent-green: #10b981;
       --radius: 12px;
@@ -310,11 +326,23 @@ const STATUS_CFG: Record<string, { bg: string; text: string; label: string }> = 
       font-family: 'Inter', system-ui, sans-serif;
       color: var(--text); font-size: 14px;
     }
+    /* Light theme */
+    :host-context([data-theme="light"]) {
+      --bg: #f1f5f9;
+      --header-bg: #ffffff;
+      --card: #ffffff;
+      --card-hover: #f8fafc;
+      --border: #e2e8f0;
+      --border-soft: #eef2f7;
+      --text: #0f172a;
+      --muted: #64748b;
+      --soft-fill: rgba(15,23,42,.03);
+    }
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     /* ── Header ── */
     .kd-header {
-      background: #0a1628;
+      background: var(--header-bg);
       border-bottom: 1px solid var(--border);
       position: sticky; top: 0; z-index: 100;
     }
@@ -361,13 +389,13 @@ const STATUS_CFG: Record<string, { bg: string; text: string; label: string }> = 
       background: rgba(255,255,255,.2); padding: .05rem .35rem;
       border-radius: 10px; font-size: .65rem;
     }
-    .kd-logout-btn {
-      width: 32px; height: 32px; border: 1px solid var(--border);
+    .kd-icon-btn {
+      width: 34px; height: 34px; border: 1px solid var(--border);
       border-radius: var(--radius-sm); background: transparent; color: var(--muted);
       cursor: pointer; display: flex; align-items: center; justify-content: center;
-      transition: all .15s;
+      transition: all .15s; flex-shrink: 0;
     }
-    .kd-logout-btn:hover { border-color: var(--muted); color: var(--text); }
+    .kd-icon-btn:hover { border-color: var(--accent); color: var(--accent); }
 
     /* ── Board ── */
     .kd-root { min-height: 100vh; }
@@ -407,7 +435,7 @@ const STATUS_CFG: Record<string, { bg: string; text: string; label: string }> = 
 
     .kd-customer-row {
       display: flex; align-items: center; gap: .5rem;
-      background: rgba(255,255,255,.04); border-radius: var(--radius-sm);
+      background: var(--soft-fill); border-radius: var(--radius-sm);
       padding: .5rem .75rem;
     }
     .kd-cust-icon { color: var(--muted); flex-shrink: 0; }
@@ -488,7 +516,7 @@ const STATUS_CFG: Record<string, { bg: string; text: string; label: string }> = 
       display: flex; align-items: center; justify-content: center; padding: 1rem;
     }
     .kd-modal {
-      background: #1e293b; border: 1px solid var(--border);
+      background: var(--card); border: 1px solid var(--border);
       border-radius: var(--radius); width: 100%; max-width: 560px;
       max-height: 90vh; display: flex; flex-direction: column; overflow: hidden;
     }
@@ -516,7 +544,7 @@ const STATUS_CFG: Record<string, { bg: string; text: string; label: string }> = 
       color: var(--muted); font-size: .7rem; text-transform: uppercase;
       letter-spacing: .04em; font-weight: 600;
     }
-    .kd-items-table td { padding: .625rem .5rem .625rem 0; border-bottom: 1px solid rgba(255,255,255,.05); vertical-align: top; }
+    .kd-items-table td { padding: .625rem .5rem .625rem 0; border-bottom: 1px solid var(--border-soft); vertical-align: top; }
     .kd-r { text-align: right; }
     .kd-td-name { font-weight: 600; }
     .kd-td-meta { font-size: .7rem; color: var(--muted); margin-top: .15rem; }
@@ -540,16 +568,50 @@ const STATUS_CFG: Record<string, { bg: string; text: string; label: string }> = 
     .kd-modal-close-btn:hover { border-color: var(--muted); color: var(--text); }
 
     /* ── Responsive ── */
+    /* Tablets */
+    @media (max-width: 1024px) {
+      .kd-board { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+    }
     @media (max-width: 768px) {
-      .kd-board { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); padding: .875rem; gap: .75rem; }
-      .kd-header-inner { flex-wrap: wrap; gap: .5rem; }
+      .kd-header-inner { flex-wrap: wrap; gap: .5rem .625rem; padding: .625rem .875rem; }
+      .kd-brand { order: 1; }
+      .kd-header-right { order: 2; margin-left: auto; }
       .kd-header-center { order: 3; width: 100%; justify-content: flex-start; }
-      .kd-filter-tabs { flex-wrap: wrap; }
+      /* Filter tabs scroll horizontally as a single row instead of wrapping/overflowing */
+      .kd-filter-tabs {
+        order: 4; width: 100%; flex-wrap: nowrap; overflow-x: auto;
+        -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 2px;
+      }
+      .kd-filter-tabs::-webkit-scrollbar { display: none; }
+      .kd-filter-tab { flex-shrink: 0; padding: .45rem .7rem; }
+      .kd-board { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); padding: .875rem; gap: .75rem; }
       .kd-brand-sub { display: none; }
     }
-    @media (max-width: 480px) {
-      .kd-board { grid-template-columns: 1fr; }
-      .kd-filter-tab span:not(.kd-filter-count) { display: none; }
+    /* Large phones (425px) and down — single readable column, bigger tap targets */
+    @media (max-width: 560px) {
+      .kd-board { grid-template-columns: 1fr; padding: .75rem; gap: .75rem; }
+      .kd-header-right { gap: .4rem; }
+      .kd-card { padding: .875rem; }
+      /* Buttons grow to comfortable touch height during rush */
+      .kd-view-btn, .kd-advance-btn, .kd-awaiting-badge { padding: .7rem .75rem; font-size: .8rem; }
+      .kd-modal-foot { flex-direction: column; }
+      .kd-modal-foot .kd-advance-btn, .kd-modal-foot .kd-awaiting-badge { width: 100%; }
+    }
+    /* Small phones (375px / 320px) — prevent any overflow, keep everything legible */
+    @media (max-width: 400px) {
+      .kd-header-inner { padding: .55rem .7rem; }
+      .kd-brand-icon { width: 32px; height: 32px; }
+      .kd-overlay { padding: .5rem; }
+      .kd-modal-body { padding: .875rem .9rem; }
+      .kd-modal-head { padding: .875rem .9rem; }
+      .kd-items-table { font-size: .78rem; }
+      .kd-card-foot { flex-direction: column; }
+      .kd-view-btn, .kd-advance-btn, .kd-awaiting-badge { width: 100%; flex: none; }
+    }
+    @media (max-width: 340px) {
+      :host { font-size: 13px; }
+      .kd-order-num { font-size: 1rem; }
+      .kd-live-badge { font-size: .72rem; padding: .3rem .7rem; }
     }
   `]
 })
@@ -557,6 +619,7 @@ export class KitchenComponent implements OnInit {
   private api    = inject(ApiService);
   private socket = inject(SocketService);
   auth           = inject(AuthService);
+  theme          = inject(ThemeService);
 
   orders        = signal<any[]>([]);
   selectedOrder = signal<any>(null);

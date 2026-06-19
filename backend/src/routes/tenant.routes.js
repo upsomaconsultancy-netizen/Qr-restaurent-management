@@ -52,6 +52,7 @@ router.delete('/menu/items/:id', permit('OWNER'), asyncH(menu.deleteItem));
 
 // Orders / Kitchen / Billing
 router.get('/orders', permit('OWNER', 'MANAGER', 'WAITER', 'KITCHEN'), asyncH(orders.list));
+router.get('/orders/workflow-mode', permit('OWNER', 'MANAGER', 'WAITER', 'KITCHEN'), asyncH(orders.workflowMode));
 router.get('/orders/kitchen-queue', permit('OWNER', 'MANAGER', 'KITCHEN'), asyncH(orders.kitchenQueue));
 router.get('/orders/waiter-queue', permit('OWNER', 'MANAGER', 'WAITER'), asyncH(orders.waiterQueue));
 router.patch('/orders/:id/status', permit('OWNER', 'MANAGER', 'WAITER', 'KITCHEN'), asyncH(orders.updateStatus));
@@ -66,6 +67,9 @@ router.get('/analytics/items', permit('OWNER', 'MANAGER'), asyncH(analytics.item
 router.get('/analytics/time', permit('OWNER', 'MANAGER'), asyncH(analytics.time));
 router.get('/analytics/staff', permit('OWNER', 'MANAGER'), asyncH(analytics.staff));
 router.get('/analytics/inventory', permit('OWNER', 'MANAGER'), asyncH(analytics.inventory));
+
+// Advanced owner analytics (rich date ranges, products, categories, tables, staff perf, cancellations)
+router.get('/analytics/overview', permit('OWNER', 'MANAGER'), asyncH(analytics.overview));
 
 // Customer analytics
 router.get('/analytics/customers/favorites', permit('OWNER', 'MANAGER'), asyncH(customerAnalytics.favorites));
@@ -87,6 +91,17 @@ router.get('/staff', permit('OWNER', 'MANAGER'), asyncH(staff.list));
 router.post('/staff', permit('OWNER', 'MANAGER'), asyncH(staff.create));
 router.patch('/staff/:id', permit('OWNER', 'MANAGER'), asyncH(staff.update));
 router.patch('/staff/:id/toggle', permit('OWNER', 'MANAGER'), asyncH(staff.toggleActive));
+
+// Discounts (OWNER/MANAGER manage; outlet-scoped)
+const discounts = require('../controllers/discount.controller');
+router.get('/discounts', permit('OWNER', 'MANAGER'), asyncH(discounts.list));
+router.get('/discounts/by-customer', permit('OWNER', 'MANAGER'), asyncH(discounts.byCustomer));
+router.post('/discounts', permit('OWNER', 'MANAGER'), asyncH(discounts.create));
+router.post('/discounts/assign-bulk', permit('OWNER', 'MANAGER'), asyncH(discounts.assignBulk));
+router.patch('/discounts/:id', permit('OWNER', 'MANAGER'), asyncH(discounts.update));
+router.patch('/discounts/:id/toggle', permit('OWNER', 'MANAGER'), asyncH(discounts.toggle));
+router.patch('/discounts/:id/assign', permit('OWNER', 'MANAGER'), asyncH(discounts.assign));
+router.delete('/discounts/:id', permit('OWNER', 'MANAGER'), asyncH(discounts.remove));
 
 // Inventory
 router.get('/inventory', permit('OWNER', 'MANAGER'), asyncH(inventory.list));

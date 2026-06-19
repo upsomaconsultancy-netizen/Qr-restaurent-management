@@ -12,6 +12,7 @@ const { sessionBill, customerBill } = require('../services/billing.service');
 const { consumeForOrder } = require('../services/inventory.service');
 const { emitToOutlet, emitToOutletWaiters, emitToCustomer, emitToStaff } = require('../sockets');
 const { audit } = require('../utils/audit');
+const { outletHasKitchenStaff } = require('../utils/kitchenStaff');
 
 const ORDER_FLOW = ['PENDING', 'ACCEPTED', 'PREPARING', 'DONE', 'READY_TO_SERVE', 'SERVED', 'PAYMENT_COMPLETED', 'CLOSED'];
 
@@ -32,6 +33,31 @@ exports.list = async (req, res) => {
     .populate('customerSessionId', 'customerName mobileNumber')
     .lean();
   res.json({ success: true, data: orders });
+};
+
+/**
+ * Workflow mode for the current user's outlet (or a given ?outletId= for OWNER).
+ * GET /api/tenant/orders/workflow-mode
+ * Tells the frontend whether the kitchen stage is active for this outlet.
+ * When hasKitchen=false, Owner/Waiter move orders PENDING -> SERVED directly.
+ */
+exports.workflowMode = async (req, res) => {
+  let outletId = req.user.outletId;
+  if (!outletId && (req.user.role === 'OWNER' || req.user.role === 'MANAGER')) {
+    outletId = req.query.outletId || null;
+  }
+  if (!outletId) {
+    // OWNER with no specific outlet: report per-outlet so the UI can decide globally.
+    const outlets = await Outlet.find({ restaurantId: req.user.restaurantId, isDeleted: false }).select('_id').lean();
+    const flags = await Promise.all(outlets.map(async (o) => ({
+      outletId: o._id.toString(),
+      hasKitchen: await outletHasKitchenStaff(o._id.toString())
+    })));
+    const anyKitchen = flags.some((f) => f.hasKitchen);
+    return res.json({ success: true, data: { hasKitchen: anyKitchen, perOutlet: flags } });
+  }
+  const hasKitchen = await outletHasKitchenStaff(outletId.toString());
+  res.json({ success: true, data: { hasKitchen, outletId: outletId.toString() } });
 };
 
 exports.kitchenQueue = async (req, res) => {
@@ -76,12 +102,28 @@ exports.updateStatus = async (req, res) => {
   if (!order) throw ApiError.notFound('Order not found. It may have been removed or you may not have access.');
 
   const prev = order.status;
+
+  // Dynamic per-outlet workflow: if the outlet has no kitchen staff, the kitchen
+  // stage is bypassed and Owner/Waiter move orders Pending -> Served (or Cancelled)
+  // directly. If a kitchen exists, the order must pass through the kitchen
+  // (reaching READY_TO_SERVE) before a waiter can mark it Served.
+  const hasKitchen = await outletHasKitchenStaff(order.outletId.toString());
+  if (status === 'SERVED' && hasKitchen && role === 'WAITER') {
+    if (!['DONE', 'READY_TO_SERVE'].includes(prev)) {
+      throw ApiError.conflict('This order has not been prepared by the kitchen yet. Please wait until it is ready to serve.');
+    }
+  }
   order.status = status;
   order.updatedBy = req.user.id;
   order.updatedByName = user?.name;
   order.updatedByEmail = user?.email;
 
   if (status === 'ACCEPTED' && prev === 'PENDING') {
+    consumeForOrder(order).catch((e) => console.error('[inventory]', e.message));
+  }
+  // Bypass mode (no kitchen): an order can jump PENDING -> SERVED without ever
+  // passing through ACCEPTED, so consume inventory here too.
+  if (status === 'SERVED' && prev === 'PENDING' && !hasKitchen) {
     consumeForOrder(order).catch((e) => console.error('[inventory]', e.message));
   }
 
@@ -96,9 +138,14 @@ exports.updateStatus = async (req, res) => {
       orderNumber: order.orderNumber,
       tableName: table ? (table.name || `T-${table.number}`) : 'Unknown',
       tableNumber: table?.number,
-      items: order.items.filter(i => i.status !== 'CANCELLED').map(i => ({ name: i.name, qty: i.qty })),
+      items: order.items.filter(i => i.status !== 'CANCELLED').map(i => ({
+        name: i.name, qty: i.qty, variant: i.variant?.name, notes: i.notes, lineTotal: i.lineTotal
+      })),
       customerName: order.customerName,
+      customerPhone: order.customerPhone,
+      total: order.total,
       outletName: outlet?.name,
+      createdAt: order.createdAt,
       timestamp: new Date()
     });
   }

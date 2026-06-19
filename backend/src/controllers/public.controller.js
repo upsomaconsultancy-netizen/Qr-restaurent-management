@@ -11,6 +11,7 @@ const Tip = require('../models/Tip');
 const Counter = require('../models/Counter');
 const ApiError = require('../utils/ApiError');
 const { priceOrder, sessionBill, customerBill } = require('../services/billing.service');
+const { resolveCustomerDiscount } = require('../services/discount.service');
 const { emitToOutlet, emitToCustomer } = require('../sockets');
 const { audit } = require('../utils/audit');
 const redis = require('../config/redis');
@@ -392,6 +393,19 @@ exports.placeOrder = async (req, res) => {
     customerPhone: cs.mobileNumber
   });
   priceOrder(order, restaurant.taxPercent);
+
+  // Auto-apply any active discount assigned to this customer's mobile at this outlet.
+  // Computed on the order subtotal, then folded into the total via a re-price.
+  const discount = await resolveCustomerDiscount({
+    outletId: tableSession.outletId,
+    mobile: cs.mobileNumber,
+    subtotal: order.subtotal
+  });
+  if (discount) {
+    order.discount = discount;
+    priceOrder(order, restaurant.taxPercent);
+  }
+
   await order.save();
 
   // Respond immediately — socket emit + bill + audit run async in background
@@ -506,6 +520,8 @@ exports.customerReceipt = async (req, res) => {
         taxAmount: bill.taxAmount,
         billTaxes: bill.billTaxes || [],
         billTaxAmount: bill.billTaxAmount || 0,
+        discountAmount: bill.discountAmount || 0,
+        discounts: bill.discounts || [],
         serviceCharge,
         serviceChargePercent: restaurant.serviceChargePercent || 0,
         grandTotal: +(bill.total + serviceCharge).toFixed(2)

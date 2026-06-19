@@ -66,6 +66,20 @@ const orderSchema = new mongoose.Schema(
       default: []
     },
     billTaxAmount: { type: Number, default: 0 },
+    // Snapshot of any customer discount applied at order time (by assigned mobile).
+    discount: {
+      type: new mongoose.Schema(
+        {
+          discountId: { type: mongoose.Types.ObjectId, ref: 'Discount' },
+          name: String,
+          type: { type: String, enum: ['PERCENTAGE', 'FLAT'] },
+          value: Number,        // the % or flat ₹ configured
+          amount: Number        // actual ₹ deducted for this order
+        },
+        { _id: false }
+      ),
+      default: null
+    },
     total: Number,
 
     paymentStatus: { type: String, enum: ['UNPAID', 'PAID'], default: 'UNPAID' },

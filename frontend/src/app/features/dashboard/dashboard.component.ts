@@ -11,6 +11,9 @@ import { CategoryManagerComponent } from './category-manager.component';
 import { TableManagementComponent } from './table-management.component';
 import { StaffManagementComponent } from './staff-management.component';
 import { ImageUploadComponent } from '../../shared/components/image-upload.component';
+import { ThemeService } from '../../core/services/theme.service';
+import { WorkingModeService } from '../../core/services/working-mode.service';
+import { NotificationSoundService } from '../../core/services/notification-sound.service';
 import { Chart, registerables } from 'chart.js';
 
 Chart.register(...registerables);
@@ -43,6 +46,26 @@ Chart.register(...registerables);
           </div>
 
           <div class="header-right">
+            <!-- Working Mode toggle (Owner & Waiter only) -->
+            <button *ngIf="canUseWorkingMode()" class="hdr-toggle" [class.hdr-toggle-on]="workingMode.enabled()" (click)="workingMode.toggle()"
+              [title]="workingMode.enabled() ? 'Switch to Normal Mode' : 'Switch to Working Mode'">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3"/><path d="M12 1v6M12 17v6M4.2 4.2l4.3 4.3M15.5 15.5l4.3 4.3M1 12h6M17 12h6M4.2 19.8l4.3-4.3M15.5 8.5l4.3-4.3"/>
+              </svg>
+              <span class="hdr-toggle-label">{{ workingMode.enabled() ? 'Working' : 'Normal' }}</span>
+            </button>
+            <!-- Dark / light theme toggle -->
+            <button class="hdr-icon-btn" (click)="theme.toggle()" [title]="theme.theme() === 'dark' ? 'Light mode' : 'Dark mode'" aria-label="Toggle theme">
+              @if (theme.theme() === 'dark') {
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/>
+                </svg>
+              } @else {
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                </svg>
+              }
+            </button>
             <div class="user-chip">
               <div class="user-ava">{{ getInitials() }}</div>
               <div class="user-info">
@@ -74,7 +97,7 @@ Chart.register(...registerables);
             Orders
             <span class="nav-pill" *ngIf="activeOrdersCount() > 0">{{ activeOrdersCount() }}</span>
           </button>
-          <button class="nav-tab" [class.active]="activeTab() === 'tables'" (click)="activeTab.set('tables')">
+          <button *ngIf="!inWorkingMode()" class="nav-tab" [class.active]="activeTab() === 'tables'" (click)="activeTab.set('tables')">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M3 9h18v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/>
               <path d="M3 9V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4"/>
@@ -82,7 +105,7 @@ Chart.register(...registerables);
             </svg>
             Tables
           </button>
-          <button class="nav-tab" [class.active]="activeTab() === 'menu'" (click)="activeTab.set('menu')">
+          <button *ngIf="!inWorkingMode()" class="nav-tab" [class.active]="activeTab() === 'menu'" (click)="activeTab.set('menu')">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
               <line x1="8" y1="6" x2="21" y2="6"/>
               <line x1="8" y1="12" x2="21" y2="12"/>
@@ -93,11 +116,11 @@ Chart.register(...registerables);
             </svg>
             Menu
           </button>
-          <button class="nav-tab" [class.active]="activeTab() === 'tips'" (click)="activeTab.set('tips'); loadTips()">
+          <button *ngIf="!inWorkingMode()" class="nav-tab" [class.active]="activeTab() === 'tips'" (click)="activeTab.set('tips'); loadTips()">
             💝 Tips
             <span class="nav-pill" *ngIf="tipsTotal() > 0">₹{{ tipsTotal() | number:'1.0-0' }}</span>
           </button>
-          <button *ngIf="isManager()" class="nav-tab" [class.active]="activeTab() === 'staff'" (click)="activeTab.set('staff')">
+          <button *ngIf="isManager() && !inWorkingMode()" class="nav-tab" [class.active]="activeTab() === 'staff'" (click)="activeTab.set('staff')">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
               <circle cx="9" cy="7" r="4"/>
@@ -106,12 +129,24 @@ Chart.register(...registerables);
             </svg>
             Staff
           </button>
-          <button *ngIf="isManager()" class="nav-tab" [class.active]="activeTab() === 'favorites'" (click)="activeTab.set('favorites'); loadFavorites()">
+          <button *ngIf="isManager() && !inWorkingMode()" class="nav-tab" [class.active]="activeTab() === 'favorites'" (click)="activeTab.set('favorites'); loadFavorites()">
             ⭐ Favorites
           </button>
-          <button *ngIf="auth.user()?.role === 'OWNER'" class="nav-tab" [class.active]="activeTab() === 'outlets'" (click)="activeTab.set('outlets'); loadOutlets()">
+          <button *ngIf="isManager() && !inWorkingMode()" class="nav-tab" [class.active]="activeTab() === 'discounts'" (click)="activeTab.set('discounts'); loadDiscounts(); loadDiscountsByCustomer()">
+            🏷️ Discounts
+          </button>
+          <button *ngIf="isManager() && !inWorkingMode()" class="nav-tab" [class.active]="activeTab() === 'analytics'" (click)="activeTab.set('analytics'); loadOverview()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
+            </svg>
+            Analytics
+          </button>
+          <button *ngIf="auth.user()?.role === 'OWNER' && !inWorkingMode()" class="nav-tab" [class.active]="activeTab() === 'outlets'" (click)="activeTab.set('outlets'); loadOutlets()">
             🏪 Outlets
           </button>
+          <span *ngIf="inWorkingMode()" class="working-badge">
+            <span class="working-dot"></span> Working Mode
+          </span>
 
           <!-- Outlet selector (OWNER/MANAGER) -->
           <div *ngIf="isManager() && outlets().length > 0" class="outlet-selector-wrap" style="margin-left:auto;display:flex;align-items:center;gap:8px;">
@@ -155,6 +190,73 @@ Chart.register(...registerables);
         }
       </nav>
 
+      <!-- ═══ Waiter "Order Ready" centered popup ═══ -->
+      @if (isWaiter() && activeReady(); as ready) {
+        <div class="ready-overlay">
+          <div class="ready-modal" role="dialog" aria-modal="true">
+            <div class="ready-modal-head">
+              <div class="ready-pulse">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+                </svg>
+              </div>
+              <div class="ready-head-text">
+                <div class="ready-title">Order Ready to Serve</div>
+                <div class="ready-sub">The kitchen has finished preparing this order.</div>
+              </div>
+              <button class="ready-close" (click)="closeReadyPopup(ready)" aria-label="Close">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+
+            <div class="ready-modal-body">
+              <div class="ready-meta-grid">
+                <div class="ready-meta"><span>Order</span><strong>#{{ ready.orderNumber }}</strong></div>
+                <div class="ready-meta"><span>Table</span><strong>{{ ready.tableName }}</strong></div>
+                @if (ready.customerName) {
+                  <div class="ready-meta"><span>Customer</span><strong>{{ ready.customerName }}</strong></div>
+                }
+                <div class="ready-meta"><span>Time</span><strong>{{ ready.createdAt ? (ready.createdAt | date:'hh:mm a') : (ready.timestamp | date:'hh:mm a') }}</strong></div>
+              </div>
+
+              <div class="ready-items">
+                @for (item of ready.items; track $index) {
+                  <div class="ready-item">
+                    <span class="ready-item-qty">{{ item.qty }}×</span>
+                    <span class="ready-item-name">
+                      {{ item.name }}
+                      @if (item.variant) { <span class="ready-item-var">({{ item.variant }})</span> }
+                      @if (item.notes) { <span class="ready-item-note">📝 {{ item.notes }}</span> }
+                    </span>
+                    @if (item.lineTotal != null) { <span class="ready-item-price">₹{{ item.lineTotal }}</span> }
+                  </div>
+                }
+              </div>
+
+              @if (ready.total != null) {
+                <div class="ready-total"><span>Total</span><strong>₹{{ ready.total }}</strong></div>
+              }
+
+              @if (readyQueue().length > 1) {
+                <div class="ready-queue-hint">+ {{ readyQueue().length - 1 }} more order{{ readyQueue().length - 1 !== 1 ? 's' : '' }} ready</div>
+              }
+            </div>
+
+            <div class="ready-modal-foot">
+              <button class="ready-btn-cancel" (click)="cancelReady(ready)">Cancel Order</button>
+              <button class="ready-btn-complete" (click)="completeReady(ready)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+                Complete Order
+              </button>
+            </div>
+          </div>
+        </div>
+      }
+
       <!-- ── Main ── -->
       <main class="dash-main">
 
@@ -162,7 +264,7 @@ Chart.register(...registerables);
         @if (activeTab() === 'orders') {
           <div class="orders-view">
 
-            @if (isManager()) {
+            @if (isManager() && !inWorkingMode()) {
               <!-- Analytics outlet selector for OWNER -->
               @if (auth.user()?.role === 'OWNER' && outlets().length > 1) {
                 <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
@@ -610,6 +712,15 @@ Chart.register(...registerables);
               </div>
             </div>
 
+            <!-- Bulk discount action bar (appears when customers are selected) -->
+            @if (selectedMobiles().size > 0) {
+              <div class="fav-bulkbar">
+                <span class="fav-bulk-count">{{ selectedMobiles().size }} selected</span>
+                <button class="btn-discount" (click)="openAssignDiscount(null)">🏷️ Assign Discount</button>
+                <button class="fav-bulk-clear" (click)="clearSelection()">Clear</button>
+              </div>
+            }
+
             @if (favLoading()) {
               <div class="fav-loading">Loading analytics…</div>
             } @else if (favRows().length === 0) {
@@ -619,8 +730,10 @@ Chart.register(...registerables);
                 <table class="orders-tbl fav-tbl">
                   <thead>
                     <tr>
+                      <th class="fav-cb-col"><input type="checkbox" [checked]="allSelected()" (change)="toggleSelectAll($event)" aria-label="Select all"></th>
                       <th>Mobile</th>
                       <th>Customer Name</th>
+                      <th>Discounts</th>
                       <th>Favorite Items</th>
                       <th class="kd-num">Total Orders</th>
                       <th class="kd-num">Total Spend</th>
@@ -629,9 +742,17 @@ Chart.register(...registerables);
                   </thead>
                   <tbody>
                     @for (row of favRows(); track row.mobileNumber) {
-                      <tr>
+                      <tr [class.fav-row-sel]="selectedMobiles().has(row.mobileNumber)">
+                        <td class="fav-cb-col"><input type="checkbox" [checked]="selectedMobiles().has(row.mobileNumber)" (change)="toggleSelect(row.mobileNumber)" aria-label="Select customer"></td>
                         <td><span class="cust-phone">{{ row.mobileNumber }}</span></td>
                         <td><span class="cust-name">{{ row.customerName }}</span></td>
+                        <td>
+                          @for (d of discountsFor(row.mobileNumber); track d.id) {
+                            <span class="disc-badge" [class.disc-expired]="d.status === 'EXPIRED'" [class.disc-inactive]="d.status === 'INACTIVE'">
+                              {{ d.name }} · {{ d.type === 'PERCENTAGE' ? d.value + '%' : '₹' + d.value }}
+                            </span>
+                          } @empty { <span class="disc-none">—</span> }
+                        </td>
                         <td>
                           <div class="fav-items-list">
                             @for (item of row.items.slice(0,3); track item.name) {
@@ -645,9 +766,10 @@ Chart.register(...registerables);
                         <td class="kd-num"><strong>{{ row.totalOrders }}</strong></td>
                         <td class="kd-num"><strong>₹{{ row.totalSpend | number:'1.0-0' }}</strong></td>
                         <td>
-                          <button class="btn-action btn-hist" (click)="viewCustomerProfile(row.mobileNumber)">
-                            👁 Profile
-                          </button>
+                          <div class="fav-actions">
+                            <button class="btn-action btn-discount-ico" title="Assign discount" (click)="openAssignDiscount(row.mobileNumber)">🏷️</button>
+                            <button class="btn-action btn-hist" (click)="viewCustomerProfile(row.mobileNumber)">👁 Profile</button>
+                          </div>
                         </td>
                       </tr>
                     }
@@ -655,6 +777,43 @@ Chart.register(...registerables);
                 </table>
               </div>
             }
+          </div>
+        }
+
+        <!-- ════════ ASSIGN DISCOUNT MODAL ════════ -->
+        @if (showAssignModal()) {
+          <div class="modal-overlay" (click)="closeAssignModal()">
+            <div class="modal-box modal-sm" (click)="$event.stopPropagation()">
+              <div class="modal-head">
+                <div>
+                  <div class="modal-title">🏷️ Assign Discount</div>
+                  <div class="modal-sub">{{ assignTargets().length }} customer{{ assignTargets().length !== 1 ? 's' : '' }} selected</div>
+                </div>
+                <button class="modal-close" (click)="closeAssignModal()">✕</button>
+              </div>
+              <div class="modal-body">
+                @if (assignableDiscounts().length === 0) {
+                  <p class="assign-empty">No discounts yet. Create one in the <strong>Discounts</strong> tab first, then assign it here.</p>
+                } @else {
+                  <label class="assign-label">Choose a discount</label>
+                  <select class="assign-sel" [(ngModel)]="assignDiscountId">
+                    <option value="">Select…</option>
+                    @for (d of assignableDiscounts(); track d._id) {
+                      <option [value]="d._id">{{ d.name }} — {{ d.type === 'PERCENTAGE' ? d.value + '%' : '₹' + d.value }}{{ d.status === 'INACTIVE' ? ' (inactive)' : '' }}</option>
+                    }
+                  </select>
+                  <div class="assign-targets">
+                    @for (m of assignTargets(); track m) { <span class="assign-chip">{{ m }}</span> }
+                  </div>
+                }
+              </div>
+              <div class="modal-foot">
+                <button class="btn btn-secondary" (click)="closeAssignModal()">Cancel</button>
+                <button class="btn btn-primary" [disabled]="!assignDiscountId || assignSaving()" (click)="confirmAssignDiscount()">
+                  {{ assignSaving() ? 'Assigning…' : 'Assign Discount' }}
+                </button>
+              </div>
+            </div>
           </div>
         }
 
@@ -1116,6 +1275,12 @@ Chart.register(...registerables);
                           <div class="rcpt-total-row rcpt-tax-row"><span>{{ t.name }}</span><span>₹{{ t.amount | number:'1.2-2' }}</span></div>
                         }
                       }
+                      @if (receiptOrder()?.order.discount?.amount > 0) {
+                        <div class="rcpt-total-row rcpt-discount-row">
+                          <span>Discount ({{ receiptOrder()!.order.discount.name }} · {{ receiptOrder()!.order.discount.type === 'PERCENTAGE' ? receiptOrder()!.order.discount.value + '%' : '₹' + receiptOrder()!.order.discount.value }})</span>
+                          <span>− ₹{{ receiptOrder()!.order.discount.amount | number:'1.2-2' }}</span>
+                        </div>
+                      }
                       <div class="rcpt-divider">───────────────────────────────────</div>
                       <div class="rcpt-total-row rcpt-grand-total"><span>GRAND TOTAL</span><span>₹{{ receiptOrder()?.order.total | number:'1.2-2' }}</span></div>
                     </div>
@@ -1135,6 +1300,256 @@ Chart.register(...registerables);
           </div>
         }
 
+        <!-- ════════ DISCOUNTS TAB ════════ -->
+        @if (activeTab() === 'discounts') {
+          <div class="disc-view">
+            <div class="disc-head">
+              <div>
+                <h2 class="an-title">Discounts</h2>
+                <p class="an-sub">Create customer discounts and assign them by mobile number. Active discounts auto-apply to future orders.</p>
+              </div>
+              <button class="btn btn-primary" (click)="openDiscountForm()">+ New Discount</button>
+            </div>
+
+            @if (discountsLoading()) {
+              <div class="an-loading"><div class="an-spinner"></div><span>Loading discounts…</span></div>
+            } @else {
+              @for (group of [
+                { key: 'active',   label: 'Active',   rows: discounts().active },
+                { key: 'inactive', label: 'Inactive', rows: discounts().inactive },
+                { key: 'expired',  label: 'Expired',  rows: discounts().expired }
+              ]; track group.key) {
+                <div class="disc-group">
+                  <div class="disc-group-title">
+                    <span class="disc-dot" [class]="'disc-dot-' + group.key"></span>
+                    {{ group.label }} <span class="disc-group-count">{{ group.rows.length }}</span>
+                  </div>
+                  @if (group.rows.length === 0) {
+                    <div class="disc-group-empty">No {{ group.label.toLowerCase() }} discounts.</div>
+                  } @else {
+                    <div class="disc-cards">
+                      @for (d of group.rows; track d._id) {
+                        <div class="disc-card">
+                          <div class="disc-card-top">
+                            <div class="disc-card-name">{{ d.name }}</div>
+                            <div class="disc-card-val">{{ d.type === 'PERCENTAGE' ? d.value + '%' : '₹' + d.value }} off</div>
+                          </div>
+                          <div class="disc-card-meta">
+                            @if (d.startDate || d.expiryDate) {
+                              <span>📅 {{ d.startDate ? (d.startDate | date:'dd MMM') : 'Now' }} → {{ d.expiryDate ? (d.expiryDate | date:'dd MMM yyyy') : 'No expiry' }}</span>
+                            } @else { <span>📅 No date limit</span> }
+                            <span>👥 {{ d.assignedCount }} customer{{ d.assignedCount !== 1 ? 's' : '' }}</span>
+                          </div>
+                          @if (d.assignedMobiles?.length) {
+                            <div class="disc-assigned">
+                              @for (m of d.assignedMobiles.slice(0, 6); track m) {
+                                <span class="assign-chip">{{ m }} <button class="chip-x" title="Unassign" (click)="unassignMobile(d, m)">×</button></span>
+                              }
+                              @if (d.assignedMobiles.length > 6) { <span class="chip-more">+{{ d.assignedMobiles.length - 6 }}</span> }
+                            </div>
+                          }
+                          <div class="disc-card-actions">
+                            <button class="btn-action" (click)="openDiscountForm(d)">✏️ Edit</button>
+                            <button class="btn-action" (click)="toggleDiscount(d)">{{ d.isActive ? '⏸ Deactivate' : '▶ Activate' }}</button>
+                            <button class="btn-action btn-del" (click)="deleteDiscount(d)">🗑 Delete</button>
+                          </div>
+                        </div>
+                      }
+                    </div>
+                  }
+                </div>
+              }
+            }
+          </div>
+
+          <!-- Discount create/edit modal -->
+          @if (showDiscountForm()) {
+            <div class="modal-overlay" (click)="closeDiscountForm()">
+              <div class="modal-box modal-sm" (click)="$event.stopPropagation()">
+                <div class="modal-head">
+                  <div class="modal-title">{{ editingDiscountId() ? 'Edit Discount' : 'New Discount' }}</div>
+                  <button class="modal-close" (click)="closeDiscountForm()">✕</button>
+                </div>
+                <div class="modal-body disc-form">
+                  <label class="assign-label">Discount Name</label>
+                  <input class="assign-sel" [(ngModel)]="discountForm.name" placeholder="e.g. Loyal Customer 10%">
+
+                  <div class="disc-form-row">
+                    <div>
+                      <label class="assign-label">Type</label>
+                      <select class="assign-sel" [(ngModel)]="discountForm.type">
+                        <option value="PERCENTAGE">Percentage (%)</option>
+                        <option value="FLAT">Flat (₹)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label class="assign-label">{{ discountForm.type === 'PERCENTAGE' ? 'Percent' : 'Amount (₹)' }}</label>
+                      <input class="assign-sel" type="number" min="0" [(ngModel)]="discountForm.value" placeholder="0">
+                    </div>
+                  </div>
+
+                  <div class="disc-form-row">
+                    <div>
+                      <label class="assign-label">Start Date</label>
+                      <input class="assign-sel" type="date" [(ngModel)]="discountForm.startDate">
+                    </div>
+                    <div>
+                      <label class="assign-label">Expiry Date</label>
+                      <input class="assign-sel" type="date" [(ngModel)]="discountForm.expiryDate">
+                    </div>
+                  </div>
+
+                  @if (isOwner() && outlets().length > 1 && !editingDiscountId()) {
+                    <label class="assign-label">Outlet</label>
+                    <select class="assign-sel" [(ngModel)]="discountForm.outletId">
+                      <option value="">Default outlet</option>
+                      @for (o of outlets(); track o._id) { <option [value]="o._id">{{ o.name }}</option> }
+                    </select>
+                  }
+                </div>
+                <div class="modal-foot">
+                  <button class="btn btn-secondary" (click)="closeDiscountForm()">Cancel</button>
+                  <button class="btn btn-primary" [disabled]="discountSaving()" (click)="saveDiscount()">
+                    {{ discountSaving() ? 'Saving…' : (editingDiscountId() ? 'Save Changes' : 'Create Discount') }}
+                  </button>
+                </div>
+              </div>
+            </div>
+          }
+        }
+
+        <!-- ════════ ADVANCED ANALYTICS TAB ════════ -->
+        @if (activeTab() === 'analytics') {
+          <div class="an-view">
+            <div class="an-head">
+              <div>
+                <h2 class="an-title">Business Analytics</h2>
+                <p class="an-sub">Live performance across your {{ selectedOutletId() ? 'selected outlet' : 'restaurant' }}.</p>
+              </div>
+              <div class="an-range">
+                @for (r of rangeOptions; track r.key) {
+                  <button class="an-range-btn" [class.active]="anRange() === r.key" (click)="setRange(r.key)">{{ r.label }}</button>
+                }
+              </div>
+            </div>
+
+            @if (anRange() === 'custom') {
+              <div class="an-custom">
+                <label>From <input type="date" [(ngModel)]="anFrom" (change)="loadOverview()"></label>
+                <label>To <input type="date" [(ngModel)]="anTo" (change)="loadOverview()"></label>
+              </div>
+            }
+
+            @if (anLoading()) {
+              <div class="an-loading"><div class="an-spinner"></div><span>Loading analytics…</span></div>
+            } @else if (overview()) {
+              @if (overview(); as ov) {
+              <!-- KPI cards -->
+              <div class="an-kpis">
+                <div class="an-kpi">
+                  <div class="an-kpi-lbl">Revenue</div>
+                  <div class="an-kpi-num">₹{{ ov.summary.revenue | number:'1.0-0' }}</div>
+                  <div class="an-kpi-meta">{{ ov.summary.paidOrders }} paid orders</div>
+                </div>
+                <div class="an-kpi">
+                  <div class="an-kpi-lbl">Orders</div>
+                  <div class="an-kpi-num">{{ ov.summary.orders | number }}</div>
+                  <div class="an-kpi-meta">{{ ov.summary.completed }} completed</div>
+                </div>
+                <div class="an-kpi">
+                  <div class="an-kpi-lbl">Avg Order Value</div>
+                  <div class="an-kpi-num">₹{{ ov.summary.avgOrderValue | number:'1.0-0' }}</div>
+                  <div class="an-kpi-meta">per paid order</div>
+                </div>
+                <div class="an-kpi">
+                  <div class="an-kpi-lbl">Cancellations</div>
+                  <div class="an-kpi-num">{{ ov.summary.cancelled | number }}</div>
+                  <div class="an-kpi-meta">{{ ov.summary.cancellationRate | number:'1.0-1' }}% of orders</div>
+                </div>
+                @if (ov.kitchen) {
+                  <div class="an-kpi">
+                    <div class="an-kpi-lbl">Avg Prep Time</div>
+                    <div class="an-kpi-num">{{ ov.kitchen.avgPrepMinutes }}<span class="an-kpi-unit">min</span></div>
+                    <div class="an-kpi-meta">{{ ov.kitchen.ordersPrepared }} orders</div>
+                  </div>
+                }
+              </div>
+
+              <!-- Charts row -->
+              <div class="an-grid">
+                <div class="an-card an-card-wide">
+                  <div class="an-card-title">Revenue & Orders Trend</div>
+                  <canvas id="anRevenueChart"></canvas>
+                </div>
+                <div class="an-card">
+                  <div class="an-card-title">Completed vs Cancelled</div>
+                  <canvas id="anStatusChart"></canvas>
+                </div>
+                <div class="an-card">
+                  <div class="an-card-title">Top Selling Products</div>
+                  <canvas id="anTopChart"></canvas>
+                </div>
+                <div class="an-card">
+                  <div class="an-card-title">Category Performance</div>
+                  <canvas id="anCategoryChart"></canvas>
+                </div>
+                <div class="an-card an-card-wide">
+                  <div class="an-card-title">Peak Business Hours</div>
+                  <canvas id="anHoursChart"></canvas>
+                </div>
+                <div class="an-card">
+                  <div class="an-card-title">Payment Mix</div>
+                  <canvas id="anPaymentChart"></canvas>
+                </div>
+              </div>
+
+              <!-- Tables row -->
+              <div class="an-tables">
+                <div class="an-card">
+                  <div class="an-card-title">Top Tables</div>
+                  <table class="an-table">
+                    <thead><tr><th>Table</th><th class="an-r">Orders</th><th class="an-r">Revenue</th></tr></thead>
+                    <tbody>
+                      @for (t of ov.tablePerformance; track $index) {
+                        <tr><td>{{ t.name }}</td><td class="an-r">{{ t.orders }}</td><td class="an-r">₹{{ t.revenue | number:'1.0-0' }}</td></tr>
+                      } @empty { <tr><td colspan="3" class="an-empty-cell">No table data in this period.</td></tr> }
+                    </tbody>
+                  </table>
+                </div>
+                <div class="an-card">
+                  <div class="an-card-title">Waiter Performance</div>
+                  <table class="an-table">
+                    <thead><tr><th>Waiter</th><th class="an-r">Served</th><th class="an-r">Revenue</th></tr></thead>
+                    <tbody>
+                      @for (w of ov.waiterPerformance; track $index) {
+                        <tr><td>{{ w._id || '—' }}</td><td class="an-r">{{ w.served }}</td><td class="an-r">₹{{ w.revenue | number:'1.0-0' }}</td></tr>
+                      } @empty { <tr><td colspan="3" class="an-empty-cell">No waiter activity in this period.</td></tr> }
+                    </tbody>
+                  </table>
+                </div>
+                <div class="an-card">
+                  <div class="an-card-title">Low-Performing Products</div>
+                  <table class="an-table">
+                    <thead><tr><th>Item</th><th class="an-r">Qty</th><th class="an-r">Revenue</th></tr></thead>
+                    <tbody>
+                      @for (p of ov.lowProducts; track $index) {
+                        <tr><td>{{ p.name }}</td><td class="an-r">{{ p.qty }}</td><td class="an-r">₹{{ p.revenue | number:'1.0-0' }}</td></tr>
+                      } @empty { <tr><td colspan="3" class="an-empty-cell">No product sales in this period.</td></tr> }
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              }
+            } @else {
+              <div class="an-empty">
+                <div class="an-empty-icon">📊</div>
+                <h3>No data for this period</h3>
+                <p>Try a wider date range to see business performance.</p>
+              </div>
+            }
+          </div>
+        }
+
       </main>
     </div>
   `,
@@ -1151,10 +1566,96 @@ Chart.register(...registerables);
       --c-green:    #10b981;
       --r:          10px;
       --r-sm:       6px;
+      --c-soft:     #f9fafb;
       --shadow:     0 1px 3px rgba(0,0,0,.07), 0 4px 12px rgba(0,0,0,.04);
       font-family: 'Inter', system-ui, sans-serif;
     }
+    /* Dark theme — overrides shared tokens; the whole dashboard reacts instantly. */
+    :host-context([data-theme="dark"]) {
+      --c-bg:       #0f172a;
+      --c-surface:  #1e293b;
+      --c-border:   #334155;
+      --c-text:     #f1f5f9;
+      --c-muted:    #94a3b8;
+      --c-primary:  #818cf8;
+      --c-soft:     #243044;
+      --shadow:     0 1px 3px rgba(0,0,0,.4), 0 4px 16px rgba(0,0,0,.3);
+    }
     * { margin:0; padding:0; box-sizing:border-box; }
+
+    /* ══ Waiter "Order Ready" popup ══ */
+    .ready-overlay {
+      position: fixed; inset: 0; z-index: 2000;
+      background: rgba(8,12,24,.62); backdrop-filter: blur(3px);
+      display: flex; align-items: center; justify-content: center; padding: 1rem;
+      animation: readyFade .18s ease;
+    }
+    @keyframes readyFade { from { opacity: 0; } to { opacity: 1; } }
+    .ready-modal {
+      width: 100%; max-width: 440px; background: var(--c-surface);
+      border-radius: 16px; overflow: hidden;
+      box-shadow: 0 24px 64px rgba(0,0,0,.4); border: 1px solid var(--c-border);
+      animation: readyPop .22s cubic-bezier(.16,1,.3,1);
+    }
+    @keyframes readyPop { from { transform: scale(.92) translateY(12px); opacity: 0; } to { transform: none; opacity: 1; } }
+    .ready-modal-head {
+      display: flex; align-items: flex-start; gap: .75rem;
+      padding: 1.1rem 1.25rem; background: linear-gradient(135deg, #10b981, #059669); color: #fff;
+    }
+    .ready-pulse {
+      width: 42px; height: 42px; border-radius: 12px; flex-shrink: 0;
+      background: rgba(255,255,255,.2); display: flex; align-items: center; justify-content: center;
+      animation: readyPulse 1.4s ease-in-out infinite;
+    }
+    @keyframes readyPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(255,255,255,.4); } 50% { box-shadow: 0 0 0 8px rgba(255,255,255,0); } }
+    .ready-head-text { flex: 1; }
+    .ready-title { font-size: 1.05rem; font-weight: 800; }
+    .ready-sub { font-size: .76rem; opacity: .9; margin-top: .15rem; }
+    .ready-close {
+      background: rgba(255,255,255,.15); border: none; color: #fff; cursor: pointer;
+      width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center;
+      justify-content: center; flex-shrink: 0; transition: background .15s;
+    }
+    .ready-close:hover { background: rgba(255,255,255,.3); }
+    .ready-modal-body { padding: 1.1rem 1.25rem; max-height: 52vh; overflow-y: auto; }
+    .ready-meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; margin-bottom: 1rem; }
+    .ready-meta { display: flex; flex-direction: column; gap: .15rem; }
+    .ready-meta span { font-size: .68rem; text-transform: uppercase; letter-spacing: .04em; color: var(--c-muted); }
+    .ready-meta strong { font-size: .95rem; color: var(--c-text); font-weight: 700; }
+    .ready-items { display: flex; flex-direction: column; gap: .4rem; border-top: 1px solid var(--c-border); padding-top: .85rem; }
+    .ready-item { display: flex; align-items: baseline; gap: .5rem; font-size: .85rem; color: var(--c-text); }
+    .ready-item-qty { color: #059669; font-weight: 800; min-width: 1.8rem; }
+    .ready-item-name { flex: 1; }
+    .ready-item-var { color: var(--c-muted); font-size: .76rem; }
+    .ready-item-note { display: block; color: #d97706; font-size: .74rem; margin-top: .1rem; }
+    .ready-item-price { color: var(--c-muted); font-size: .8rem; }
+    .ready-total {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-top: 1rem; padding-top: .85rem; border-top: 1px solid var(--c-border);
+    }
+    .ready-total span { font-size: .82rem; color: var(--c-muted); font-weight: 600; }
+    .ready-total strong { font-size: 1.2rem; font-weight: 800; color: var(--c-text); }
+    .ready-queue-hint {
+      margin-top: .85rem; text-align: center; font-size: .76rem; font-weight: 600;
+      color: var(--c-primary); background: var(--c-soft); padding: .5rem; border-radius: 8px;
+    }
+    .ready-modal-foot { display: flex; gap: .65rem; padding: 1rem 1.25rem; border-top: 1px solid var(--c-border); }
+    .ready-btn-cancel {
+      flex: 1; padding: .8rem; border-radius: 10px; cursor: pointer; font-size: .88rem; font-weight: 700;
+      background: transparent; border: 1.5px solid var(--c-border); color: var(--c-muted); transition: all .15s;
+    }
+    .ready-btn-cancel:hover { border-color: var(--c-danger); color: var(--c-danger); }
+    .ready-btn-complete {
+      flex: 2; padding: .8rem; border-radius: 10px; cursor: pointer; font-size: .9rem; font-weight: 800;
+      background: linear-gradient(135deg, #10b981, #059669); border: none; color: #fff;
+      display: flex; align-items: center; justify-content: center; gap: .4rem; transition: filter .15s;
+    }
+    .ready-btn-complete:hover { filter: brightness(1.08); }
+    @media (max-width: 480px) {
+      .ready-meta-grid { grid-template-columns: 1fr 1fr; }
+      .ready-modal-foot { flex-direction: column-reverse; }
+      .ready-btn-cancel, .ready-btn-complete { flex: none; width: 100%; }
+    }
 
     /* ══ Layout ══ */
     .dashboard { min-height:100vh; background:var(--c-bg); }
@@ -1212,6 +1713,33 @@ Chart.register(...registerables);
       cursor:pointer; transition:all .18s; white-space:nowrap;
     }
     .btn-logout:hover { background:var(--c-danger); border-color:var(--c-danger); color:#fff; }
+
+    /* Header toggles (Working Mode + theme) */
+    .hdr-toggle {
+      display:flex; align-items:center; gap:.4rem;
+      padding:.45rem .8rem; background:transparent;
+      border:1px solid var(--c-border); border-radius:2rem;
+      font-size:.78rem; font-weight:600; color:var(--c-muted);
+      cursor:pointer; transition:all .18s; white-space:nowrap;
+    }
+    .hdr-toggle:hover { border-color:var(--c-primary); color:var(--c-primary); }
+    .hdr-toggle-on {
+      background:var(--c-primary); border-color:var(--c-primary); color:#fff;
+    }
+    .hdr-toggle-on:hover { color:#fff; filter:brightness(1.05); }
+    .hdr-icon-btn {
+      width:36px; height:36px; display:flex; align-items:center; justify-content:center;
+      background:transparent; border:1px solid var(--c-border); border-radius:var(--r-sm);
+      color:var(--c-muted); cursor:pointer; transition:all .18s; flex-shrink:0;
+    }
+    .hdr-icon-btn:hover { border-color:var(--c-primary); color:var(--c-primary); }
+    .working-badge {
+      display:inline-flex; align-items:center; gap:.45rem; margin-left:auto; align-self:center;
+      padding:.4rem .85rem; border-radius:2rem; font-size:.76rem; font-weight:700;
+      background:rgba(79,70,229,.1); color:var(--c-primary);
+    }
+    .working-dot { width:7px; height:7px; border-radius:50%; background:var(--c-primary); animation:blink 1.2s infinite; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
 
     /* ══ Nav ══ */
     .dash-nav {
@@ -1496,6 +2024,7 @@ Chart.register(...registerables);
     .rcpt-total-row { display:flex; justify-content:space-between; font-size:11px; padding:.2rem 0; }
     .rcpt-tax-row { color:#555; }
     .rcpt-grand-total { font-size:14px; font-weight:bold; padding:.5rem 0; }
+    .rcpt-discount-row { color:#059669; font-weight:600; }
     .rcpt-footer { font-size:12px; font-weight:bold; margin:.3rem 0; text-transform:uppercase; }
     .rcpt-footer-web { font-size:10px; color:#777; margin-top:.15rem; }
 
@@ -1623,6 +2152,131 @@ Chart.register(...registerables);
     .side-title { font-size:.88rem; font-weight:700; color:var(--c-text); }
     .side-sub   { font-size:.7rem; color:var(--c-muted); margin-top:.1rem; }
 
+    /* ══ Advanced Analytics tab ══ */
+    .an-view { max-width:1440px; margin:0 auto; }
+    .an-head { display:flex; align-items:flex-end; justify-content:space-between; gap:1rem; flex-wrap:wrap; margin-bottom:1.25rem; }
+    .an-title { font-size:1.35rem; font-weight:800; color:var(--c-text); }
+    .an-sub { font-size:.82rem; color:var(--c-muted); margin-top:.2rem; }
+    .an-range { display:flex; gap:.35rem; flex-wrap:wrap; }
+    .an-range-btn {
+      padding:.45rem .8rem; border-radius:2rem; border:1px solid var(--c-border);
+      background:var(--c-surface); color:var(--c-muted); font-size:.76rem; font-weight:600; cursor:pointer; transition:all .15s;
+    }
+    .an-range-btn:hover { border-color:var(--c-primary); color:var(--c-primary); }
+    .an-range-btn.active { background:var(--c-primary); border-color:var(--c-primary); color:#fff; }
+    .an-custom { display:flex; gap:1rem; margin-bottom:1.25rem; flex-wrap:wrap; }
+    .an-custom label { font-size:.78rem; color:var(--c-muted); display:flex; flex-direction:column; gap:.3rem; font-weight:600; }
+    .an-custom input { padding:.45rem .6rem; border:1px solid var(--c-border); border-radius:var(--r-sm); background:var(--c-surface); color:var(--c-text); font-size:.82rem; }
+
+    .an-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:1rem; margin-bottom:1.25rem; }
+    .an-kpi {
+      background:var(--c-surface); border:1px solid var(--c-border); border-radius:var(--r);
+      padding:1.1rem 1.25rem; box-shadow:var(--shadow);
+    }
+    .an-kpi-lbl { font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--c-muted); }
+    .an-kpi-num { font-size:1.7rem; font-weight:800; color:var(--c-text); margin-top:.35rem; line-height:1.1; }
+    .an-kpi-unit { font-size:.9rem; font-weight:600; color:var(--c-muted); margin-left:.2rem; }
+    .an-kpi-meta { font-size:.72rem; color:var(--c-muted); margin-top:.25rem; }
+
+    .an-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:1rem; margin-bottom:1rem; }
+    .an-tables { display:grid; grid-template-columns:repeat(3,1fr); gap:1rem; }
+    .an-card {
+      background:var(--c-surface); border:1px solid var(--c-border); border-radius:var(--r);
+      padding:1.1rem 1.25rem; box-shadow:var(--shadow); min-width:0;
+    }
+    .an-card-wide { grid-column:span 2; }
+    .an-card-title { font-size:.82rem; font-weight:700; color:var(--c-text); margin-bottom:1rem; }
+    .an-card canvas { max-height:260px; }
+
+    .an-table { width:100%; border-collapse:collapse; font-size:.8rem; }
+    .an-table th {
+      text-align:left; padding:.4rem .5rem; color:var(--c-muted); font-size:.68rem;
+      text-transform:uppercase; letter-spacing:.04em; border-bottom:1px solid var(--c-border);
+    }
+    .an-table td { padding:.55rem .5rem; color:var(--c-text); border-bottom:1px solid var(--c-border); }
+    .an-table tr:last-child td { border-bottom:none; }
+    .an-r { text-align:right; }
+    .an-empty-cell { text-align:center; color:var(--c-muted); padding:1.25rem 0; }
+
+    .an-loading { display:flex; flex-direction:column; align-items:center; gap:1rem; padding:4rem 0; color:var(--c-muted); font-size:.85rem; }
+    .an-spinner {
+      width:36px; height:36px; border:3px solid var(--c-border); border-top-color:var(--c-primary);
+      border-radius:50%; animation:anSpin .7s linear infinite;
+    }
+    @keyframes anSpin { to { transform:rotate(360deg); } }
+    .an-empty { text-align:center; padding:4rem 1rem; color:var(--c-muted); }
+    .an-empty-icon { font-size:2.5rem; margin-bottom:.75rem; }
+    .an-empty h3 { color:var(--c-text); font-size:1.05rem; margin-bottom:.35rem; }
+
+    @media (max-width:960px) {
+      .an-grid { grid-template-columns:1fr; }
+      .an-card-wide { grid-column:span 1; }
+      .an-tables { grid-template-columns:1fr; }
+    }
+
+    /* ══ Discounts + customer assignment ══ */
+    .fav-cb-col { width:36px; text-align:center; }
+    .fav-cb-col input { width:16px; height:16px; cursor:pointer; accent-color:var(--c-primary); }
+    .fav-row-sel { background:rgba(79,70,229,.06); }
+    .fav-actions { display:flex; gap:.35rem; align-items:center; }
+    .btn-discount-ico { font-size:.95rem; padding:.25rem .45rem; }
+    .fav-bulkbar {
+      display:flex; align-items:center; gap:.75rem; margin-bottom:.9rem;
+      background:var(--c-surface); border:1px solid var(--c-primary); border-radius:var(--r);
+      padding:.6rem 1rem; box-shadow:var(--shadow);
+    }
+    .fav-bulk-count { font-weight:700; color:var(--c-primary); font-size:.85rem; }
+    .btn-discount {
+      background:var(--c-primary); color:#fff; border:none; border-radius:var(--r-sm);
+      padding:.45rem .9rem; font-size:.8rem; font-weight:600; cursor:pointer;
+    }
+    .fav-bulk-clear { background:transparent; border:none; color:var(--c-muted); cursor:pointer; font-size:.8rem; }
+    .disc-badge {
+      display:inline-block; font-size:.7rem; font-weight:600; padding:.15rem .5rem; border-radius:1rem;
+      background:rgba(16,185,129,.12); color:#059669; margin:.1rem .15rem .1rem 0;
+    }
+    .disc-badge.disc-expired { background:rgba(239,68,68,.12); color:#dc2626; text-decoration:line-through; }
+    .disc-badge.disc-inactive { background:rgba(148,163,184,.18); color:var(--c-muted); }
+    .disc-none { color:var(--c-muted); }
+
+    .modal-sm { max-width:460px; }
+    .assign-empty { color:var(--c-muted); font-size:.85rem; }
+    .assign-label { display:block; font-size:.72rem; font-weight:700; color:var(--c-muted); text-transform:uppercase; letter-spacing:.04em; margin:.6rem 0 .3rem; }
+    .assign-sel {
+      width:100%; box-sizing:border-box; padding:.55rem .7rem; border:1px solid var(--c-border);
+      border-radius:var(--r-sm); background:var(--c-surface); color:var(--c-text); font-size:.85rem;
+    }
+    .assign-targets, .disc-assigned { display:flex; flex-wrap:wrap; gap:.35rem; margin-top:.75rem; }
+    .assign-chip {
+      display:inline-flex; align-items:center; gap:.25rem; font-size:.74rem; font-weight:600;
+      background:var(--c-soft); color:var(--c-text); padding:.2rem .5rem; border-radius:1rem;
+    }
+    .chip-x { background:none; border:none; cursor:pointer; color:var(--c-muted); font-size:.9rem; line-height:1; padding:0; }
+    .chip-x:hover { color:var(--c-danger); }
+
+    .disc-view { max-width:1440px; margin:0 auto; }
+    .disc-head { display:flex; align-items:flex-end; justify-content:space-between; gap:1rem; flex-wrap:wrap; margin-bottom:1.5rem; }
+    .disc-group { margin-bottom:1.75rem; }
+    .disc-group-title { display:flex; align-items:center; gap:.5rem; font-size:.9rem; font-weight:700; color:var(--c-text); margin-bottom:.85rem; }
+    .disc-dot { width:9px; height:9px; border-radius:50%; }
+    .disc-dot-active { background:#10b981; } .disc-dot-inactive { background:#94a3b8; } .disc-dot-expired { background:#ef4444; }
+    .disc-group-count { font-size:.72rem; color:var(--c-muted); background:var(--c-soft); padding:.05rem .5rem; border-radius:1rem; }
+    .disc-group-empty { font-size:.8rem; color:var(--c-muted); padding:.5rem 0; }
+    .disc-cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:1rem; }
+    .disc-card {
+      background:var(--c-surface); border:1px solid var(--c-border); border-radius:var(--r);
+      padding:1.1rem 1.2rem; box-shadow:var(--shadow);
+    }
+    .disc-card-top { display:flex; align-items:flex-start; justify-content:space-between; gap:.5rem; margin-bottom:.6rem; }
+    .disc-card-name { font-weight:700; color:var(--c-text); font-size:.95rem; }
+    .disc-card-val { font-weight:800; color:var(--c-primary); font-size:.95rem; white-space:nowrap; }
+    .disc-card-meta { display:flex; flex-direction:column; gap:.25rem; font-size:.74rem; color:var(--c-muted); margin-bottom:.6rem; }
+    .disc-card-actions { display:flex; flex-wrap:wrap; gap:.4rem; margin-top:.8rem; padding-top:.75rem; border-top:1px solid var(--c-border); }
+    .disc-card-actions .btn-action { font-size:.74rem; }
+    .btn-del:hover { color:var(--c-danger); border-color:var(--c-danger); }
+    .disc-form-row { display:grid; grid-template-columns:1fr 1fr; gap:.75rem; }
+    .modal-foot { display:flex; gap:.6rem; justify-content:flex-end; padding:1rem 1.25rem; border-top:1px solid var(--c-border); }
+
     /* ══ Responsive ══ */
     /* Tablet */
     @media (max-width:1100px) {
@@ -1638,6 +2292,8 @@ Chart.register(...registerables);
       .user-chip { padding:.35rem .5rem; }
       .logout-label { display:none; }
       .btn-logout { padding:.42rem .55rem; }
+      .hdr-toggle-label { display:none; }
+      .hdr-toggle { padding:.42rem .55rem; }
       .dash-nav { top:53px; }
       .dash-nav-inner { padding:0 .75rem; }
       .nav-tab { padding:.65rem .75rem; font-size:.8rem; }
@@ -1668,6 +2324,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private outletSvc   = inject(OutletService);
   private menuSvc     = inject(MenuService);
   auth = inject(AuthService);
+  theme       = inject(ThemeService);
+  workingMode = inject(WorkingModeService);
+  private sound = inject(NotificationSoundService);
 
   restaurantInfo = signal<any>(null);
 
@@ -1678,7 +2337,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   peakDays  = signal<any[]>([]);
   error     = signal<string | null>(null);
   activeOrdersCount = signal<number>(0);
-  activeTab = signal<'orders'|'tables'|'menu'|'staff'|'favorites'|'outlets'|'tips'>('orders');
+  activeTab = signal<'orders'|'tables'|'menu'|'staff'|'favorites'|'outlets'|'tips'|'analytics'|'discounts'>('orders');
   selectedPeriod = 'day';
 
   // Tips
@@ -1709,6 +2368,17 @@ export class DashboardComponent implements OnInit, OnDestroy {
   pendingServiceOrders = signal<any[]>([]);
   showNotifications    = signal(false);
 
+  // Waiter "Order Ready" popup: a queue of ready orders shown as a centered modal,
+  // one at a time, until acted on or dismissed. Deduped so the same order never
+  // pops or beeps twice (socket + polling can both deliver it).
+  readyQueue   = signal<any[]>([]);
+  private seenReadyOrders = new Set<string>();
+  activeReady = computed(() => this.readyQueue()[0] || null);
+  isWaiter() { return this.auth.user()?.role === 'WAITER'; }
+  // Working Mode is available to Owner and Waiter only (not Manager / Kitchen).
+  canUseWorkingMode() { return ['OWNER', 'WAITER'].includes(this.auth.user()?.role || ''); }
+  inWorkingMode = computed(() => this.canUseWorkingMode() && this.workingMode.enabled());
+
   receiptOrder   = signal<any | null>(null);
   receiptLoading = signal(false);
   receiptError   = signal<string | null>(null);
@@ -1735,6 +2405,26 @@ export class DashboardComponent implements OnInit, OnDestroy {
   favItemSearch = '';
   favOutletId   = '';
 
+  // Customer discount assignment (Favourites)
+  selectedMobiles = signal<Set<string>>(new Set());
+  discountsByCustomer = signal<Record<string, any[]>>({});
+  showAssignModal = signal(false);
+  assignTargets = signal<string[]>([]);
+  assignDiscountId = '';
+  assignSaving = signal(false);
+
+  // Discounts module
+  discounts = signal<{ all: any[]; active: any[]; inactive: any[]; expired: any[] }>({ all: [], active: [], inactive: [], expired: [] });
+  activeDiscounts = computed(() => this.discounts().active);
+  // Discounts that can be assigned from Favourites: anything not expired (active
+  // discounts apply now; inactive/not-yet-started ones apply once enabled/in-window).
+  assignableDiscounts = computed(() => [...this.discounts().active, ...this.discounts().inactive]);
+  discountsLoading = signal(false);
+  discountForm: any = this.blankDiscount();
+  editingDiscountId = signal<string | null>(null);
+  showDiscountForm = signal(false);
+  discountSaving = signal(false);
+
   // Customer profile modal
   customerProfile = signal<any | null>(null);
 
@@ -1743,6 +2433,23 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private hoursChart:   Chart | null = null;
   private daysChart:    Chart | null = null;
   private timer: any;
+
+  // ── Advanced analytics tab state ──
+  overview  = signal<any | null>(null);
+  anLoading = signal(false);
+  anRange   = signal<string>('today');
+  anFrom = '';
+  anTo = '';
+  rangeOptions = [
+    { key: 'today',      label: 'Today'      },
+    { key: 'yesterday',  label: 'Yesterday'  },
+    { key: 'last7',      label: 'Last 7 Days'  },
+    { key: 'last30',     label: 'Last 30 Days' },
+    { key: 'this_month', label: 'This Month'   },
+    { key: 'last_month', label: 'Last Month'   },
+    { key: 'custom',     label: 'Custom'       },
+  ];
+  private anCharts: Chart[] = [];
 
   periods = [
     { value:'day',   label:'Today' },
@@ -1761,6 +2468,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
       );
     });
 
+    // Working Mode hides every secondary tab — snap back to Orders so the user
+    // is never stranded on a tab that just disappeared.
+    effect(() => {
+      if (this.inWorkingMode() && this.activeTab() !== 'orders') {
+        this.activeTab.set('orders');
+      }
+    }, { allowSignalWrites: true });
+
     // Redraw charts after data arrives
     effect(() => {
       const t = this.sales()?.trend;
@@ -1777,6 +2492,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
     effect(() => {
       const d = this.peakDays();
       if (d.length) this.later(() => this.drawDays(d));
+    });
+    // Re-theme analytics charts when the user toggles dark/light while viewing them.
+    effect(() => {
+      this.theme.theme();
+      const ov = this.overview();
+      if (ov && this.activeTab() === 'analytics') this.later(() => this.drawAnalytics(ov));
     });
   }
 
@@ -1809,9 +2530,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
       this.loadOrders();
       if (this.isManager()) this.loadSales();
     });
-    // Waiter notification: kitchen marked order DONE
+    // Waiter notification: kitchen finished an order and it's ready to serve.
+    // Only waiters get the centered "Order Ready" popup + sound; owners/managers
+    // just see it in their monitoring panel. Deduped per order.
     this.sock.on<any>('order:ready_to_serve').subscribe(notification => {
-      this.pendingServiceOrders.update(list => [notification, ...list]);
+      this.pendingServiceOrders.update(list =>
+        list.some(n => n.orderId === notification.orderId) ? list : [notification, ...list]
+      );
+      if (this.isWaiter()) this.enqueueReady(notification);
     });
     // New tip from a customer — refresh the tips table + nav pill total
     this.sock.on('tip:new').subscribe(() => this.loadTips());
@@ -1826,6 +2552,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
     clearInterval(this.timer);
     [this.revenueChart, this.itemsChart, this.hoursChart, this.daysChart]
       .forEach(c => c?.destroy());
+    this.anCharts.forEach(c => c.destroy());
+    this.sound.stop();
   }
 
   // ── Outlet methods ──────────────────────────────────
@@ -1849,6 +2577,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.menuSvc.selectedOutletId.set(id);
     this.loadOrders();
     if (this.isManager()) { this.loadSales(); this.loadItems(); this.loadTime(); }
+    if (this.activeTab() === 'analytics') this.loadOverview();
     if (id) {
       this.outletSvc.getOutletStats(id).subscribe({ next: v => this.outletStats.set(v), error: e => console.error(e) });
     } else {
@@ -1981,6 +2710,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
   // Waiter: dismiss notification after marking served
   dismissNotification(orderId: string) {
     this.pendingServiceOrders.update(list => list.filter(n => n.orderId !== orderId));
+    this.readyQueue.update(list => list.filter(n => n.orderId !== orderId));
+    this.syncRinging();
+  }
+
+  /** Ring while any ready popup remains; stop once the last one is handled. */
+  private syncRinging() {
+    if (this.isWaiter() && this.readyQueue().length > 0) this.sound.start();
+    else this.sound.stop();
   }
 
   markServed(notification: any) {
@@ -1988,6 +2725,158 @@ export class DashboardComponent implements OnInit, OnDestroy {
       next: () => { this.dismissNotification(notification.orderId); this.loadOrders(); },
       error: e => console.error(e)
     });
+  }
+
+  // ── Order Ready popup queue (waiter) ───────────────────────────
+  /** Enqueue a ready order for the centered popup + play the alert (deduped). */
+  private enqueueReady(n: any) {
+    const id = String(n.orderId);
+    if (this.seenReadyOrders.has(id)) return;
+    this.seenReadyOrders.add(id);
+    this.readyQueue.update(list => [...list, n]);
+    this.syncRinging();
+  }
+
+  /** Complete (serve) the order shown in the popup; advances to the next queued one. */
+  completeReady(n: any) {
+    this.api.patch(`/tenant/orders/${n.orderId}/status`, { status: 'SERVED' }).subscribe({
+      next: () => { this.dismissNotification(n.orderId); this.loadOrders(); },
+      error: e => alert(e?.error?.message || 'Could not mark the order as served.')
+    });
+  }
+
+  /** Cancel the order shown in the popup. */
+  cancelReady(n: any) {
+    if (!confirm(`Cancel order #${n.orderNumber}? This cannot be undone.`)) return;
+    this.api.patch(`/tenant/orders/${n.orderId}/status`, { status: 'CANCELLED' }).subscribe({
+      next: () => { this.dismissNotification(n.orderId); this.loadOrders(); },
+      error: e => alert(e?.error?.message || 'Could not cancel the order.')
+    });
+  }
+
+  /** Manually close the popup without acting (order stays in the bell list). */
+  closeReadyPopup(n: any) {
+    this.readyQueue.update(list => list.filter(o => o.orderId !== n.orderId));
+    this.syncRinging();
+  }
+
+  // ── Advanced analytics tab ─────────────────────────────────────
+  setRange(key: string) {
+    this.anRange.set(key);
+    if (key !== 'custom') this.loadOverview();
+  }
+
+  loadOverview() {
+    if (!this.isManager()) return;
+    const range = this.anRange();
+    const params: string[] = [`range=${range}`];
+    if (range === 'custom') {
+      if (!this.anFrom || !this.anTo) return;       // wait for both dates
+      params.push(`from=${this.anFrom}`, `to=${this.anTo}`);
+    }
+    const outletId = this.selectedOutletId();
+    if (outletId) params.push(`outletId=${outletId}`);
+
+    this.anLoading.set(true);
+    this.api.get<any>(`/tenant/analytics/overview?${params.join('&')}`).subscribe({
+      next: ({ data }) => {
+        this.overview.set(data);
+        this.anLoading.set(false);
+        this.later(() => this.drawAnalytics(data));
+      },
+      error: () => { this.anLoading.set(false); this.overview.set(null); }
+    });
+  }
+
+  private themedChartColors() {
+    const dark = this.theme.theme() === 'dark';
+    return {
+      grid: dark ? 'rgba(148,163,184,.15)' : '#f3f4f6',
+      tick: dark ? '#94a3b8' : '#9ca3af',
+      text: dark ? '#f1f5f9' : '#111827'
+    };
+  }
+
+  private drawAnalytics(ov: any) {
+    this.anCharts.forEach(c => c.destroy());
+    this.anCharts = [];
+    const palette = ['#4f46e5','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899','#14b8a6'];
+    const c = this.themedChartColors();
+    const mk = (id: string, cfg: any) => {
+      const el = this.canvas(id); if (!el) return;
+      this.anCharts.push(new Chart(el, cfg));
+    };
+    const baseScales = {
+      x: { grid: { display: false }, ticks: { font: { size: 10 }, color: c.tick, maxRotation: 0 } },
+      y: { grid: { color: c.grid }, ticks: { font: { size: 10 }, color: c.tick } }
+    };
+
+    // Revenue & orders trend
+    mk('anRevenueChart', {
+      type: 'line',
+      data: {
+        labels: ov.revenueTrend.map((t: any) => t._id),
+        datasets: [
+          { label: 'Revenue (₹)', data: ov.revenueTrend.map((t: any) => +(t.revenue || 0).toFixed(0)),
+            borderColor: '#4f46e5', backgroundColor: 'rgba(79,70,229,.1)', fill: true, tension: .4, borderWidth: 2.5, pointRadius: 3, yAxisID: 'y' },
+          { label: 'Orders', data: ov.revenueTrend.map((t: any) => t.orders || 0),
+            borderColor: '#10b981', borderDash: [5, 4], fill: false, tension: .4, borderWidth: 2, pointRadius: 2, yAxisID: 'y1' }
+        ]
+      },
+      options: { responsive: true, maintainAspectRatio: true, interaction: { mode: 'index', intersect: false },
+        plugins: { legend: { labels: { color: c.text, font: { size: 11 }, usePointStyle: true, boxWidth: 12 } } },
+        scales: { x: baseScales.x, y: { ...baseScales.y, position: 'left' },
+          y1: { position: 'right', grid: { display: false }, ticks: { font: { size: 10 }, color: c.tick, precision: 0 } } } }
+    });
+
+    // Completed vs cancelled (doughnut)
+    const completed = ov.summary.completed || 0, cancelled = ov.summary.cancelled || 0;
+    const inProgress = Math.max(0, (ov.summary.orders || 0) - completed - cancelled);
+    mk('anStatusChart', {
+      type: 'doughnut',
+      data: { labels: ['Completed', 'Cancelled', 'In Progress'],
+        datasets: [{ data: [completed, cancelled, inProgress], backgroundColor: ['#10b981', '#ef4444', '#f59e0b'], borderWidth: 0 }] },
+      options: { responsive: true, maintainAspectRatio: true, cutout: '62%',
+        plugins: { legend: { position: 'bottom', labels: { color: c.text, font: { size: 11 }, usePointStyle: true, boxWidth: 10, padding: 12 } } } }
+    });
+
+    // Top products (horizontal bar)
+    const top = ov.topProducts.slice(0, 6);
+    mk('anTopChart', {
+      type: 'bar',
+      data: { labels: top.map((i: any) => i.name?.length > 14 ? i.name.slice(0, 14) + '…' : i.name),
+        datasets: [{ label: 'Qty', data: top.map((i: any) => i.qty), backgroundColor: palette.map(p => p + '33'), borderColor: palette, borderWidth: 2, borderRadius: 5 }] },
+      options: { indexAxis: 'y', responsive: true, maintainAspectRatio: true, plugins: { legend: { display: false } }, scales: baseScales }
+    });
+
+    // Category performance (bar by revenue)
+    const cats = ov.categoryPerformance.slice(0, 6);
+    mk('anCategoryChart', {
+      type: 'bar',
+      data: { labels: cats.map((c2: any) => c2.name),
+        datasets: [{ label: 'Revenue', data: cats.map((c2: any) => +(c2.revenue || 0).toFixed(0)), backgroundColor: palette.map(p => p + '33'), borderColor: palette, borderWidth: 2, borderRadius: 5 }] },
+      options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { display: false } }, scales: baseScales }
+    });
+
+    // Peak hours
+    const hourLabels = Array.from({ length: 24 }, (_, h) => `${h}:00`);
+    const hourData = hourLabels.map((_, h) => { const row = ov.peakHours.find((x: any) => x._id === h); return row ? row.orders : 0; });
+    mk('anHoursChart', {
+      type: 'bar',
+      data: { labels: hourLabels, datasets: [{ label: 'Orders', data: hourData, backgroundColor: 'rgba(79,70,229,.6)', borderRadius: 4 }] },
+      options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { display: false } }, scales: baseScales }
+    });
+
+    // Payment mix
+    if (ov.paymentMix?.length) {
+      mk('anPaymentChart', {
+        type: 'doughnut',
+        data: { labels: ov.paymentMix.map((p: any) => p._id || 'Other'),
+          datasets: [{ data: ov.paymentMix.map((p: any) => +(p.amount || 0).toFixed(0)), backgroundColor: palette, borderWidth: 0 }] },
+        options: { responsive: true, maintainAspectRatio: true, cutout: '62%',
+          plugins: { legend: { position: 'bottom', labels: { color: c.text, font: { size: 11 }, usePointStyle: true, boxWidth: 10, padding: 12 } } } }
+      });
+    }
   }
 
   // Mark a READY_TO_SERVE order as SERVED directly from the orders table
@@ -2059,6 +2948,151 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.api.get<any>('/tenant/analytics/customers/favorites', params).subscribe({
       next: ({ data }) => { this.favRows.set(data?.rows ?? data); this.favLoading.set(false); },
       error: e => { console.error(e); this.favLoading.set(false); }
+    });
+    this.loadDiscountsByCustomer();
+    this.loadDiscounts();
+  }
+
+  // ── Favourites: selection + discount assignment ────────────────
+  loadDiscountsByCustomer() {
+    const params: any = {};
+    if (this.isOwner() && this.favOutletId) params['outletId'] = this.favOutletId;
+    this.api.get<any>('/tenant/discounts/by-customer', params).subscribe({
+      next: ({ data }) => this.discountsByCustomer.set(data || {}),
+      error: () => this.discountsByCustomer.set({})
+    });
+  }
+
+  discountsFor(mobile: string): any[] {
+    const key = String(mobile || '').replace(/\D/g, '');
+    return this.discountsByCustomer()[key] || this.discountsByCustomer()[mobile] || [];
+  }
+
+  toggleSelect(mobile: string) {
+    this.selectedMobiles.update(set => {
+      const next = new Set(set);
+      next.has(mobile) ? next.delete(mobile) : next.add(mobile);
+      return next;
+    });
+  }
+
+  allSelected() {
+    const rows = this.favRows();
+    return rows.length > 0 && rows.every(r => this.selectedMobiles().has(r.mobileNumber));
+  }
+
+  toggleSelectAll(ev: Event) {
+    const checked = (ev.target as HTMLInputElement).checked;
+    this.selectedMobiles.set(checked ? new Set(this.favRows().map(r => r.mobileNumber)) : new Set());
+  }
+
+  clearSelection() { this.selectedMobiles.set(new Set()); }
+
+  /** Open the assign modal for a single mobile, or for the current bulk selection. */
+  openAssignDiscount(mobile: string | null) {
+    const targets = mobile ? [mobile] : [...this.selectedMobiles()];
+    if (!targets.length) return;
+    this.assignTargets.set(targets);
+    this.assignDiscountId = '';
+    this.showAssignModal.set(true);
+    this.loadDiscounts();   // always refresh so newly-created discounts show up
+  }
+
+  closeAssignModal() { this.showAssignModal.set(false); }
+
+  confirmAssignDiscount() {
+    if (!this.assignDiscountId) return;
+    this.assignSaving.set(true);
+    this.api.post<any>('/tenant/discounts/assign-bulk', {
+      discountId: this.assignDiscountId,
+      mobiles: this.assignTargets()
+    }).subscribe({
+      next: () => {
+        this.assignSaving.set(false);
+        this.showAssignModal.set(false);
+        this.clearSelection();
+        this.loadDiscountsByCustomer();
+      },
+      error: e => { this.assignSaving.set(false); alert(e?.error?.message || 'Could not assign the discount.'); }
+    });
+  }
+
+  // ── Discounts module ───────────────────────────────────────────
+  blankDiscount() {
+    return { name: '', type: 'PERCENTAGE', value: null as number | null, startDate: '', expiryDate: '', outletId: '' };
+  }
+
+  loadDiscounts() {
+    const params: any = {};
+    if (this.isOwner() && this.favOutletId) params['outletId'] = this.favOutletId;
+    this.discountsLoading.set(true);
+    this.api.get<any>('/tenant/discounts', params).subscribe({
+      next: ({ data }) => { this.discounts.set(data); this.discountsLoading.set(false); },
+      error: () => this.discountsLoading.set(false)
+    });
+  }
+
+  openDiscountForm(d?: any) {
+    if (d) {
+      this.editingDiscountId.set(d._id);
+      this.discountForm = {
+        name: d.name, type: d.type, value: d.value,
+        startDate: d.startDate ? d.startDate.slice(0, 10) : '',
+        expiryDate: d.expiryDate ? d.expiryDate.slice(0, 10) : '',
+        outletId: d.outletId || ''
+      };
+    } else {
+      this.editingDiscountId.set(null);
+      this.discountForm = this.blankDiscount();
+    }
+    this.showDiscountForm.set(true);
+  }
+
+  closeDiscountForm() { this.showDiscountForm.set(false); }
+
+  saveDiscount() {
+    const f = this.discountForm;
+    if (!f.name?.trim()) { alert('Please enter a discount name.'); return; }
+    if (!(Number(f.value) > 0)) { alert('Discount value must be greater than zero.'); return; }
+    if (f.type === 'PERCENTAGE' && Number(f.value) > 100) { alert('A percentage discount cannot exceed 100%.'); return; }
+
+    const body: any = {
+      name: f.name.trim(), type: f.type, value: Number(f.value),
+      startDate: f.startDate || null, expiryDate: f.expiryDate || null
+    };
+    if (this.isOwner() && (f.outletId || this.favOutletId)) body.outletId = f.outletId || this.favOutletId;
+
+    this.discountSaving.set(true);
+    const id = this.editingDiscountId();
+    const req$ = id
+      ? this.api.patch<any>(`/tenant/discounts/${id}`, body)
+      : this.api.post<any>('/tenant/discounts', body);
+    req$.subscribe({
+      next: () => { this.discountSaving.set(false); this.showDiscountForm.set(false); this.loadDiscounts(); this.loadDiscountsByCustomer(); },
+      error: e => { this.discountSaving.set(false); alert(e?.error?.message || 'Could not save the discount.'); }
+    });
+  }
+
+  toggleDiscount(d: any) {
+    this.api.patch<any>(`/tenant/discounts/${d._id}/toggle`, {}).subscribe({
+      next: () => { this.loadDiscounts(); this.loadDiscountsByCustomer(); },
+      error: e => alert(e?.error?.message || 'Could not update the discount.')
+    });
+  }
+
+  deleteDiscount(d: any) {
+    if (!confirm(`Delete discount "${d.name}"? Assigned customers will stop receiving it.`)) return;
+    this.api.delete<any>(`/tenant/discounts/${d._id}`).subscribe({
+      next: () => { this.loadDiscounts(); this.loadDiscountsByCustomer(); },
+      error: e => alert(e?.error?.message || 'Could not delete the discount.')
+    });
+  }
+
+  /** Remove one mobile from a discount's assignment list (customer visibility panel). */
+  unassignMobile(d: any, mobile: string) {
+    this.api.patch<any>(`/tenant/discounts/${d._id}/assign`, { mobiles: [mobile], mode: 'remove' }).subscribe({
+      next: () => { this.loadDiscounts(); this.loadDiscountsByCustomer(); },
+      error: e => alert(e?.error?.message || 'Could not update the assignment.')
     });
   }
 

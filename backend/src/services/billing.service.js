@@ -47,7 +47,8 @@ function priceOrder(order, taxPercent) {
   // Bill-level taxes are NOT stored per order — they are applied once at bill view time.
   order.billTaxes = [];
   order.billTaxAmount = 0;
-  order.total = round2(order.subtotal + order.taxAmount);
+  const discountAmount = order.discount?.amount || 0;
+  order.total = round2(Math.max(0, order.subtotal + order.taxAmount - discountAmount));
   return order;
 }
 
@@ -82,7 +83,9 @@ async function sessionBill(sessionId) {
   }
   const { billTaxes, billTaxAmount } = applyBillTaxes(subtotal, restaurant);
 
-  const total = round2(subtotal + taxAmount + billTaxAmount);
+  const discountAmount = round2(orders.reduce((s, o) => s + (o.discount?.amount || 0), 0));
+  const discounts = orders.filter((o) => o.discount?.amount > 0).map((o) => o.discount);
+  const total = round2(Math.max(0, subtotal + taxAmount + billTaxAmount - discountAmount));
   const unpaid = orders.filter((o) => o.paymentStatus === 'UNPAID');
   return {
     orders,
@@ -90,6 +93,8 @@ async function sessionBill(sessionId) {
     taxAmount,
     billTaxes,
     billTaxAmount,
+    discountAmount,
+    discounts,
     total,
     dueAmount: round2(unpaid.reduce((s, o) => s + (o.total || 0), 0)),
     paid: unpaid.length === 0 && orders.length > 0
@@ -118,7 +123,9 @@ async function customerBill(customerSessionId) {
   }
   const { billTaxes, billTaxAmount } = applyBillTaxes(subtotal, restaurant);
 
-  const total = round2(subtotal + taxAmount + billTaxAmount);
+  const discountAmount = round2(orders.reduce((s, o) => s + (o.discount?.amount || 0), 0));
+  const discounts = orders.filter((o) => o.discount?.amount > 0).map((o) => o.discount);
+  const total = round2(Math.max(0, subtotal + taxAmount + billTaxAmount - discountAmount));
 
   const allServed = orders.length > 0 && orders.every(
     (o) => ['SERVED', 'COMPLETED', 'CANCELLED'].includes(o.status)
@@ -138,6 +145,8 @@ async function customerBill(customerSessionId) {
     taxAmount,
     billTaxes,
     billTaxAmount,
+    discountAmount,
+    discounts,
     total,
     dueAmount: round2(unpaid.reduce((s, o) => s + (o.total || 0), 0)),
     paid: isPaid,

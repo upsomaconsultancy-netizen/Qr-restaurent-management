@@ -2,6 +2,7 @@ const User = require('../models/User');
 const Outlet = require('../models/Outlet');
 const ApiError = require('../utils/ApiError');
 const { audit } = require('../utils/audit');
+const { invalidateKitchenFlag } = require('../utils/kitchenStaff');
 
 const MANAGEABLE_BY_MANAGER = ['WAITER', 'KITCHEN'];
 const MANAGEABLE_BY_OWNER   = ['MANAGER', 'WAITER', 'KITCHEN'];
@@ -57,6 +58,7 @@ exports.create = async (req, res) => {
     if (e.code === 11000) throw ApiError.conflict(`Email "${email}" is already registered. Please use a different email.`);
     throw e;
   });
+  if (role === 'KITCHEN' && user.outletId) invalidateKitchenFlag(user.outletId.toString());
   audit({ req, action: 'STAFF_CREATED', entity: 'User', entityId: user._id, meta: { role } });
   res.status(201).json({ success: true, data: { id: user._id, name, email, role, outletId: user.outletId, isActive: user.isActive } });
 };
@@ -68,6 +70,11 @@ exports.update = async (req, res) => {
   if (user.role === 'OWNER') throw ApiError.forbidden('The restaurant owner account cannot be modified from here.');
   const allowed = allowedRoles(req);
   if (role && !allowed.includes(role)) throw ApiError.badRequest(`Invalid role "${role}". You can assign: ${allowed.join(', ')}.`);
+
+  // Snapshot kitchen-relevant state before mutation so we can invalidate the
+  // hasKitchen flag for any outlet this change adds or removes a kitchen user from.
+  const prevWasKitchen = user.role === 'KITCHEN';
+  const prevOutletId = user.outletId ? user.outletId.toString() : null;
 
   if (name) user.name = name;
   if (email) user.email = email;
@@ -89,6 +96,11 @@ exports.update = async (req, res) => {
     throw e;
   });
 
+  const nowIsKitchen = user.role === 'KITCHEN';
+  const nowOutletId = user.outletId ? user.outletId.toString() : null;
+  if (prevWasKitchen && prevOutletId) invalidateKitchenFlag(prevOutletId);
+  if (nowIsKitchen && nowOutletId && nowOutletId !== prevOutletId) invalidateKitchenFlag(nowOutletId);
+
   audit({ req, action: 'STAFF_UPDATED', entity: 'User', entityId: user._id, meta: { role: user.role } });
   res.json({ success: true, data: { id: user._id, name: user.name, email: user.email, role: user.role, outletId: user.outletId, isActive: user.isActive } });
 };
@@ -99,5 +111,6 @@ exports.toggleActive = async (req, res) => {
   if (user.role === 'OWNER') throw ApiError.forbidden('The restaurant owner account cannot be deactivated.');
   user.isActive = !user.isActive;
   await user.save();
+  if (user.role === 'KITCHEN' && user.outletId) invalidateKitchenFlag(user.outletId.toString());
   res.json({ success: true, data: { id: user._id, isActive: user.isActive } });
 };

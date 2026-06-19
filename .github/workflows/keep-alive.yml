@@ -10,4 +10,4 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Hit health endpoint
-        run: curl -fsS https://qr-restaurent-management.onrender.com/api/health
+        run: curl -fsS https://api.upsoma.in/
