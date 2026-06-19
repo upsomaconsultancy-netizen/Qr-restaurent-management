@@ -404,7 +404,7 @@ interface Faq { q: string; a: string; }
     }
     .btn-ghost:hover { border-color: #e8542f; color: #e8542f; transform: translateY(-2px); }
     .w-full { width: 100%; }
-
+/
     /* Entrance + scroll-reveal animations (only when JS is active, so no-JS shows everything) */
     @keyframes lpFadeUp { from { opacity: 0; transform: translateY(26px); } to { opacity: 1; transform: none; } }
     @keyframes lpFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-9px); } }
