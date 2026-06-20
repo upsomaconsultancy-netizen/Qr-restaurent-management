@@ -566,7 +566,7 @@ Chart.register(...registerables);
                               <button class="btn-action btn-hist" (click)="viewHistory(order)" title="Order history">
                                 📋
                               </button>
-                              @if (order.status === 'READY_TO_SERVE') {
+                              @if (order.status === 'READY_TO_SERVE' || (!hasKitchen() && ['PENDING','ACCEPTED','PREPARING','DONE'].includes(order.status))) {
                                 <button class="btn-action" (click)="markOrderServed(order)"
                                   style="background:#10b981;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer;font-weight:600;white-space:nowrap;">
                                   🍽️ <span class="pay-label">Serve</span>
@@ -2337,6 +2337,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
   peakDays  = signal<any[]>([]);
   error     = signal<string | null>(null);
   activeOrdersCount = signal<number>(0);
+  // When the outlet has no active kitchen staff, the kitchen stage is bypassed
+  // and Owner/Waiter move orders straight to SERVED. Default true so the normal
+  // kitchen flow shows until we learn otherwise.
+  hasKitchen = signal<boolean>(true);
   activeTab = signal<'orders'|'tables'|'menu'|'staff'|'favorites'|'outlets'|'tips'|'analytics'|'discounts'>('orders');
   selectedPeriod = 'day';
 
@@ -2519,6 +2523,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       }
     });
     this.loadOrders();
+    this.loadWorkflowMode();
     if (this.isManager()) {
       this.loadSales(); this.loadItems(); this.loadTime();
       this.loadOutlets();
@@ -2576,6 +2581,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     // Sync menu service so menu tab shows the selected outlet's items
     this.menuSvc.selectedOutletId.set(id);
     this.loadOrders();
+    this.loadWorkflowMode();
     if (this.isManager()) { this.loadSales(); this.loadItems(); this.loadTime(); }
     if (this.activeTab() === 'analytics') this.loadOverview();
     if (id) {
@@ -2903,6 +2909,18 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   // ── Loaders ─────────────────────────────────────────
+  // Fetch the per-outlet workflow mode so the orders table knows whether to
+  // offer a direct "Serve" action on PENDING orders (no-kitchen bypass).
+  loadWorkflowMode() {
+    const params: any = {};
+    const oid = this.selectedOutletId();
+    if (oid) params['outletId'] = oid;
+    this.api.get<any>('/tenant/orders/workflow-mode', params).subscribe({
+      next: ({ data }) => this.hasKitchen.set(data?.hasKitchen !== false),
+      error: () => this.hasKitchen.set(true)
+    });
+  }
+
   loadOrders() {
     const params: any = { limit: 50 };
     const oid = this.selectedOutletId();
