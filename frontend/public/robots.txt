@@ -47,7 +47,7 @@ Disallow: /login
 Disallow: /m/
 Allow: /
 
-# OpenAI — ChatGPT Search index
+# OpenAI — ChatGPT Search index*
 User-agent: OAI-SearchBot
 Disallow: /admin
 Disallow: /dashboard
