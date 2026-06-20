@@ -201,8 +201,13 @@ Chart.register(...registerables);
                 </svg>
               </div>
               <div class="ready-head-text">
-                <div class="ready-title">Order Ready to Serve</div>
-                <div class="ready-sub">The kitchen has finished preparing this order.</div>
+                @if (ready.kind === 'new') {
+                  <div class="ready-title">New Order Received</div>
+                  <div class="ready-sub">A customer just placed a new order.</div>
+                } @else {
+                  <div class="ready-title">Order Ready to Serve</div>
+                  <div class="ready-sub">The kitchen has finished preparing this order.</div>
+                }
               </div>
               <button class="ready-close" (click)="closeReadyPopup(ready)" aria-label="Close">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -245,13 +250,23 @@ Chart.register(...registerables);
             </div>
 
             <div class="ready-modal-foot">
-              <button class="ready-btn-cancel" (click)="cancelReady(ready)">Cancel Order</button>
-              <button class="ready-btn-complete" (click)="completeReady(ready)">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-                  <polyline points="20 6 9 17 4 12"/>
-                </svg>
-                Complete Order
-              </button>
+              @if (ready.kind === 'new') {
+                <button class="ready-btn-cancel" (click)="closeReadyPopup(ready)">Dismiss</button>
+                <button class="ready-btn-complete" (click)="acceptNew(ready)">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                  Accept Order
+                </button>
+              } @else {
+                <button class="ready-btn-cancel" (click)="cancelReady(ready)">Cancel Order</button>
+                <button class="ready-btn-complete" (click)="completeReady(ready)">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                  Complete Order
+                </button>
+              }
             </div>
           </div>
         </div>
@@ -1930,7 +1945,7 @@ Chart.register(...registerables);
       vertical-align:middle;
     }
     .orders-tbl tbody tr:last-child td { border-bottom:none; }
-    .orders-tbl tbody tr:hover { background:#fafbff; }
+    .orders-tbl tbody tr:hover { background:var(--c-soft); }
 
     .order-num { font-weight:700; font-family:'Courier New',monospace; color:var(--c-text); font-size:.85rem; }
     .table-num {
@@ -2529,7 +2544,28 @@ export class DashboardComponent implements OnInit, OnDestroy {
       this.loadOutlets();
     }
     this.sock.joinStaffRoom();
-    this.sock.on('order:new').subscribe(()      => this.loadOrders());
+    this.sock.on<any>('order:new').subscribe(order => {
+      this.loadOrders();
+      // Waiters get the centered popup + bell for a freshly placed order, the same
+      // way they do for "ready to serve". Mapped to the popup's notification shape.
+      if (this.isWaiter() && order) {
+        this.enqueueReady({
+          kind: 'new',
+          orderId: order._id,
+          orderNumber: order.orderNumber,
+          tableName: order.tableName || (order.tableId?.number ? `T-${order.tableId.number}` : 'Unknown'),
+          tableNumber: order.tableNumber ?? order.tableId?.number,
+          items: (order.items || []).filter((i: any) => i.status !== 'CANCELLED').map((i: any) => ({
+            name: i.name, qty: i.qty, variant: i.variant?.name, notes: i.notes, lineTotal: i.lineTotal
+          })),
+          customerName: order.customerName,
+          customerPhone: order.customerPhone,
+          total: order.total,
+          createdAt: order.createdAt,
+          timestamp: new Date()
+        });
+      }
+    });
     this.sock.on('order:updated').subscribe(()  => this.loadOrders());
     this.sock.on('payment:recorded').subscribe(() => {
       this.loadOrders();
@@ -2542,7 +2578,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       this.pendingServiceOrders.update(list =>
         list.some(n => n.orderId === notification.orderId) ? list : [notification, ...list]
       );
-      if (this.isWaiter()) this.enqueueReady(notification);
+      if (this.isWaiter()) this.enqueueReady({ kind: 'ready', ...notification });
     });
     // New tip from a customer — refresh the tips table + nav pill total
     this.sock.on('tip:new').subscribe(() => this.loadTips());
@@ -2748,6 +2784,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.api.patch(`/tenant/orders/${n.orderId}/status`, { status: 'SERVED' }).subscribe({
       next: () => { this.dismissNotification(n.orderId); this.loadOrders(); },
       error: e => alert(e?.error?.message || 'Could not mark the order as served.')
+    });
+  }
+
+  /** Accept a freshly placed order shown in the "new order" popup. */
+  acceptNew(n: any) {
+    this.api.patch(`/tenant/orders/${n.orderId}/status`, { status: 'ACCEPTED' }).subscribe({
+      next: () => { this.closeReadyPopup(n); this.loadOrders(); },
+      error: e => alert(e?.error?.message || 'Could not accept the order.')
     });
   }
 

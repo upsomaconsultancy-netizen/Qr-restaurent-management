@@ -416,7 +416,18 @@ exports.placeOrder = async (req, res) => {
   cs.save().catch(() => {});
 
   audit({ req, restaurantId: restaurant._id, action: 'ORDER_CREATED', entity: 'Order', entityId: order._id });
-  emitToOutlet(restaurant._id.toString(), tableSession.outletId.toString(), 'order:new', order);
+  // Emit with the table name resolved so the waiter "new order" popup can show it
+  // without relying on a populated tableId (the raw order has only the ObjectId).
+  Table.findById(order.tableId).lean()
+    .then((table) => {
+      const payload = order.toObject ? order.toObject() : order;
+      payload.tableName = table ? (table.name || `T-${table.number}`) : 'Unknown';
+      payload.tableNumber = table?.number;
+      emitToOutlet(restaurant._id.toString(), tableSession.outletId.toString(), 'order:new', payload);
+    })
+    .catch(() => {
+      emitToOutlet(restaurant._id.toString(), tableSession.outletId.toString(), 'order:new', order);
+    });
 
   customerBill(cs._id)
     .then((bill) => emitToCustomer(cs.sessionToken, 'bill:updated', bill))
