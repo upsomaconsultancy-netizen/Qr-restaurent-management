@@ -1,36 +1,132 @@
 # Upsoma Restro — robots.txt
-# Public marketing pages are crawlable; private app routes are not.
+# Public marketing pages are crawlable. Private app routes and per-table QR
+# menu pages are not. AI/answer engines are explicitly allowed on public
+# content but blocked from private routes (each agent needs its own Disallow
+# lines — a named User-agent block ignores the "*" block entirely).
 
+# ----------------------------------------------------------------------------
+# Default rules for all crawlers
+# ----------------------------------------------------------------------------
 User-agent: *
-Allow: /$
-Allow: /privacy-policy
-Allow: /terms
 Disallow: /admin
 Disallow: /dashboard
 Disallow: /kitchen
 Disallow: /login
 Disallow: /m/
-
-# Major AI / answer engines (GEO/AEO) — allow indexing of public content
-User-agent: GPTBot
 Allow: /
 
-User-agent: OAI-SearchBot
-Allow: /
-
-User-agent: ChatGPT-User
-Allow: /
-
-User-agent: PerplexityBot
-Allow: /
-
-User-agent: Google-Extended
-Allow: /
-
-User-agent: ClaudeBot
+# ----------------------------------------------------------------------------
+# Search engines (explicit, same policy as default)
+# ----------------------------------------------------------------------------
+User-agent: Googlebot
+Disallow: /admin
+Disallow: /dashboard
+Disallow: /kitchen
+Disallow: /login
+Disallow: /m/
 Allow: /
 
 User-agent: Bingbot
+Disallow: /admin
+Disallow: /dashboard
+Disallow: /kitchen
+Disallow: /login
+Disallow: /m/
 Allow: /
 
+# ----------------------------------------------------------------------------
+# AI / answer engines (GEO/AEO) — allow public content, block private routes
+# ----------------------------------------------------------------------------
+
+# OpenAI — model training crawler
+User-agent: GPTBot
+Disallow: /admin
+Disallow: /dashboard
+Disallow: /kitchen
+Disallow: /login
+Disallow: /m/
+Allow: /
+
+# OpenAI — ChatGPT Search index
+User-agent: OAI-SearchBot
+Disallow: /admin
+Disallow: /dashboard
+Disallow: /kitchen
+Disallow: /login
+Disallow: /m/
+Allow: /
+
+# OpenAI — live fetch when a ChatGPT user shares/visits a link
+User-agent: ChatGPT-User
+Disallow: /admin
+Disallow: /dashboard
+Disallow: /kitchen
+Disallow: /login
+Disallow: /m/
+Allow: /
+
+# Perplexity
+User-agent: PerplexityBot
+Disallow: /admin
+Disallow: /dashboard
+Disallow: /kitchen
+Disallow: /login
+Disallow: /m/
+Allow: /
+
+# Perplexity — live user-initiated fetch
+User-agent: Perplexity-User
+Disallow: /admin
+Disallow: /dashboard
+Disallow: /kitchen
+Disallow: /login
+Disallow: /m/
+Allow: /
+
+# Google Gemini / Vertex AI grounding (controls AI use of Google-crawled content)
+User-agent: Google-Extended
+Disallow: /admin
+Disallow: /dashboard
+Disallow: /kitchen
+Disallow: /login
+Disallow: /m/
+Allow: /
+
+# Anthropic Claude — index/citation crawler
+User-agent: ClaudeBot
+Disallow: /admin
+Disallow: /dashboard
+Disallow: /kitchen
+Disallow: /login
+Disallow: /m/
+Allow: /
+
+# Anthropic Claude — live user-initiated fetch
+User-agent: Claude-User
+Disallow: /admin
+Disallow: /dashboard
+Disallow: /kitchen
+Disallow: /login
+Disallow: /m/
+Allow: /
+
+# Apple Intelligence / Siri
+User-agent: Applebot-Extended
+Disallow: /admin
+Disallow: /dashboard
+Disallow: /kitchen
+Disallow: /login
+Disallow: /m/
+Allow: /
+
+# Common Crawl (feeds many AI datasets)
+User-agent: CCBot
+Disallow: /admin
+Disallow: /dashboard
+Disallow: /kitchen
+Disallow: /login
+Disallow: /m/
+Allow: /
+
+# ----------------------------------------------------------------------------
 Sitemap: https://upsoma.in/sitemap.xml
