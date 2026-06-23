@@ -757,9 +757,9 @@ export class LandingComponent implements OnInit, AfterViewInit {
   ];
 
   plans = [
-    { name: 'Standard Table', seats: 'Up to 4 seats', price: '00', unit: ' /table per month', sub: 'Perfect for regular dine-in tables.', featured: true, cta: 'Start 1-month free trial',
+    { name: 'Standard Table', seats: 'Up to 4 seats', price: '0', unit: ' /table per month', sub: 'Perfect for regular dine-in tables.', featured: true, cta: 'Start 1-month free trial',
       feats: ['QR ordering & digital menu', 'Live kitchen display', 'Self-serve receipts & ratings', 'Guest marketing leads', 'Up to 4 seats per table'] },
-    { name: 'Family Table', seats: 'Up to 6 seats', price: '00', unit: ' /table per month', sub: 'For larger group & family tables.', featured: false, cta: 'Start 1-month free trial',
+    { name: 'Family Table', seats: 'Up to 6 seats', price: '0', unit: ' /table per month', sub: 'For larger group & family tables.', featured: false, cta: 'Start 1-month free trial',
       feats: ['Everything in Standard Table', 'For 6-seat family tables', 'Same full feature set', 'No per-restaurant fee'] },
   ];
 
