@@ -282,7 +282,7 @@ interface Faq { q: string; a: string; }
             <ul class="lp-referral-list">
               <li><i class="fa-solid fa-check"></i> For every restaurant you refer</li>
               <li><i class="fa-solid fa-check"></i> No charge for the whole restaurant</li>
-              <li><i class="fa-solid fa-check"></i> Stacks with the 10-day free trial</li>
+              <li><i class="fa-solid fa-check"></i> Stacks with the 1 month free trial</li>
             </ul>
           </div>
         </div>
