@@ -211,7 +211,7 @@ interface Faq { q: string; a: string; }
         <div class="lp-trial-banner reveal">
           <span class="lp-trial-emoji"><i class="fa-solid fa-gift"></i></span>
           <div>
-            <strong>10 days free</strong>
+            <strong>1 month free</strong>
             <span>Full access, no card required. There's no charge for the whole restaurant — billing is simply per table.</span>
           </div>
         </div>
@@ -341,17 +341,17 @@ interface Faq { q: string; a: string; }
                 placeholder="e.g. 98765 43210" autocomplete="tel" inputmode="tel" />
             </label>
 
-            <label class="lp-field">
+            <!-- <label class="lp-field">
               <span>Email <small>(optional)</small></span>
               <input name="email" [(ngModel)]="lead.email" type="email"
                 placeholder="you@restaurant.com" autocomplete="email" />
-            </label>
+            </label> -->
 
-            <label class="lp-field">
+            <!-- <label class="lp-field">
               <span>Restaurant address <i>*</i></span>
               <input name="address" [(ngModel)]="lead.address" required
                 placeholder="Outlet name, area, city" autocomplete="street-address" />
-            </label>
+            </label> -->
 
             <label class="lp-field">
               <span>Message <small>(optional)</small></span>
@@ -757,15 +757,15 @@ export class LandingComponent implements OnInit, AfterViewInit {
   ];
 
   plans = [
-    { name: 'Standard Table', seats: 'Up to 4 seats', price: '349', unit: ' /table per month', sub: 'Perfect for regular dine-in tables.', featured: true, cta: 'Start 10-day free trial',
+    { name: 'Standard Table', seats: 'Up to 4 seats', price: '00', unit: ' /table per month', sub: 'Perfect for regular dine-in tables.', featured: true, cta: 'Start 1-month free trial',
       feats: ['QR ordering & digital menu', 'Live kitchen display', 'Self-serve receipts & ratings', 'Guest marketing leads', 'Up to 4 seats per table'] },
-    { name: 'Family Table', seats: 'Up to 6 seats', price: '399', unit: ' /table per month', sub: 'For larger group & family tables.', featured: false, cta: 'Start 10-day free trial',
+    { name: 'Family Table', seats: 'Up to 6 seats', price: '00', unit: ' /table per month', sub: 'For larger group & family tables.', featured: false, cta: 'Start 1-month free trial',
       feats: ['Everything in Standard Table', 'For 6-seat family tables', 'Same full feature set', 'No per-restaurant fee'] },
   ];
 
   faqs: Faq[] = [
     { q: 'How does Upsoma turn orders into marketing leads?', a: 'Every time a guest orders through a table QR code, we save their name, mobile number, ordered items and bill amount as a marketing lead for your restaurant. You can then re-engage those guests in your local area with offers and reminders over WhatsApp, RCS or SMS — and since 80% of WhatsApp messages are read within five minutes, win-backs actually work.' },
-    { q: 'How much does it cost?', a: 'You start with a 10-day free trial with no card required. After that there is no per-restaurant fee — you simply pay per table: ₹349 per table per month for tables of up to 4 seats, and ₹399 per table per month for 6-seat family tables. Home delivery is a separate add-on coming soon.' },
+    { q: 'How much does it cost?', a: 'You start with a 1-month free trial with no card required. After that there is no per-restaurant fee — you simply pay per table: ₹349 per table per month for tables of up to 4 seats, and ₹399 per table per month for 6-seat family tables. Home delivery is a separate add-on coming soon.' },
     { q: 'Can guests get their own bill and rate us?', a: 'Yes. The moment a guest pays, they can generate and download their own GST receipt from their phone — no waiting on staff — and then rate your restaurant and leave feedback, helping you collect reviews and improve.' },
     { q: 'Do my customers need to download an app?', a: 'No. Guests simply scan the QR code on their table with any phone camera and the menu opens in the browser — they can order instantly without installing anything.' },
     { q: 'How long does it take to go live?', a: 'Most restaurants are up and running within 24 hours. We help you import your menu, configure outlets and generate table QR codes during onboarding.' },
