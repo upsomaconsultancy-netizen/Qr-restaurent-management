@@ -4,10 +4,14 @@ const ApiError = require('../utils/ApiError');
 
 const createSchema = Joi.object({
   name: Joi.string().min(2).max(120).required(),
-  phone: Joi.string().pattern(/^[0-9+\-\s()]{7,20}$/).required()
-    .messages({ 'string.pattern.base': 'Please enter a valid phone number.' }),
+  phone: Joi.string()
+    .pattern(/^[0-9+\-\s()]{7,20}$/)
+    .required()
+    .messages({
+      'string.pattern.base': 'Please enter a valid phone number.'
+    }),
   email: Joi.string().email().allow('', null),
-  address: Joi.string().min(3).max(400).required(),
+  address: Joi.string().min(3).max(400).allow('', null),
   message: Joi.string().max(1000).allow('', null)
 });
 
@@ -19,15 +23,15 @@ exports.create = async (req, res) => {
   const { error, value } = createSchema.validate(req.body);
   if (error) throw ApiError.badRequest('Please fill the form correctly.', error.details.map(d => d.message));
 
-  const lead = await Lead.create({
-    name: value.name,
-    phone: value.phone,
-    email: value.email || null,
-    address: value.address,
-    message: value.message || null,
-    ipAddress: req.ip,
-    userAgent: (req.headers['user-agent'] || '').slice(0, 300)
-  });
+const lead = await Lead.create({
+  name: value.name,
+  phone: value.phone,
+  email: value.email || null,
+  address: value.address || null,
+  message: value.message || null,
+  ipAddress: req.ip,
+  userAgent: (req.headers['user-agent'] || '').slice(0, 300)
+});
 
   res.status(201).json({
     success: true,
