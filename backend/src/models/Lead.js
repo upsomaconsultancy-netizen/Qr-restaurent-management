@@ -10,7 +10,7 @@ const leadSchema = new mongoose.Schema(
     name:    { type: String, required: true, trim: true, maxlength: 120 },
     phone:   { type: String, required: true, trim: true, maxlength: 20 },
     email:   { type: String, trim: true, lowercase: true, maxlength: 160, default: null },
-    address: { type: String, required: true, trim: true, maxlength: 400 },
+    address: { type: String, trim: true, maxlength: 400 },
     message: { type: String, trim: true, maxlength: 1000, default: null },
 
     status: { type: String, enum: ['NEW', 'CONTACTED', 'CONVERTED', 'CLOSED'], default: 'NEW' },
